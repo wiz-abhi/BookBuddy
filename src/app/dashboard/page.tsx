@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
-import type { ChatMessage, Chat } from '@/lib/types';
+import type { ChatMessage, Chat, Book } from '@/lib/types';
 import { PanelLeft, Loader2, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
@@ -16,7 +16,7 @@ import {
 import type { ImperativePanelGroupHandle } from 'react-resizable-panels';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, orderBy, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, orderBy, getDocs, writeBatch, deleteDoc, updateDoc } from 'firebase/firestore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,6 +33,7 @@ import { useToast } from '@/hooks/use-toast';
 export default function DashboardPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   
@@ -48,6 +49,7 @@ export default function DashboardPage() {
       setUser(currentUser);
       if (!currentUser) {
         setChats([]);
+        setBooks([]);
         setActiveChatId(null);
         setMessages([]);
         setIsLoading(false);
@@ -60,9 +62,9 @@ export default function DashboardPage() {
     if (!user) return;
 
     setIsLoading(true);
-    const q = query(collection(db, 'chats'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+    const chatsQuery = query(collection(db, 'chats'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribeChats = onSnapshot(chatsQuery, (querySnapshot) => {
       const userChats: Chat[] = [];
       querySnapshot.forEach((doc) => {
         userChats.push({ id: doc.id, ...doc.data() } as Chat);
@@ -86,8 +88,27 @@ export default function DashboardPage() {
         setIsLoading(false);
     });
 
-    return () => unsubscribe();
-  }, [user, activeChatId, toast]);
+    const booksQuery = query(collection(db, 'books'), where('userId', '==', user.uid));
+    const unsubscribeBooks = onSnapshot(booksQuery, (snapshot) => {
+        const userBooks: Book[] = [];
+        snapshot.forEach((doc) => {
+            userBooks.push({ id: doc.id, ...doc.data() } as Book);
+        });
+        setBooks(userBooks);
+    }, (error) => {
+        console.error("Error fetching books:", error);
+        toast({
+            variant: 'destructive',
+            title: 'Error Loading Library',
+            description: 'Could not load your books from the database.',
+        });
+    });
+
+    return () => {
+      unsubscribeChats();
+      unsubscribeBooks();
+    };
+  }, [user, toast]);
 
 
   useEffect(() => {
@@ -164,10 +185,20 @@ export default function DashboardPage() {
   const handleSendMessage = async (content: string) => {
     if (!user || !activeChatId) return;
 
+    const activeChat = chats.find(c => c.id === activeChatId);
+    if (activeChat && activeChat.title === 'New Conversation' && messages.length === 0 && content.toLowerCase().trim() !== 'hi') {
+        try {
+            const chatDocRef = doc(db, 'chats', activeChatId);
+            const newTitle = content.length > 40 ? content.substring(0, 37) + '...' : content;
+            await updateDoc(chatDocRef, { title: newTitle });
+        } catch (error) {
+            console.error("Error updating chat title:", error);
+        }
+    }
+
     const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
     const messagesRef = collection(db, 'chats', activeChatId, 'messages');
     
-    // Optimistically update UI
     const tempMessages = [...messages, {role: 'user', content}];
     setIsSending(true);
 
@@ -175,13 +206,16 @@ export default function DashboardPage() {
       await addDoc(messagesRef, userMessage);
 
       const historyForAI = tempMessages.map(msg => ({
-        role: msg.role,
+        role: msg.role as 'user' | 'assistant',
         content: msg.content
       }));
+
+      const libraryForAI = books.map(({ title, author }) => ({ title, author }));
 
       const result = await mainChat({
         query: content,
         chatHistory: historyForAI,
+        library: libraryForAI,
       });
       
       let formattedResponse = result.mainResponse;

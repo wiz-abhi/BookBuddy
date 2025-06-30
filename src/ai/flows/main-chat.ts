@@ -13,6 +13,10 @@ import {z} from 'genkit';
 
 const MainChatInputSchema = z.object({
   query: z.string().describe('The user query about their books.'),
+  library: z.array(z.object({
+      title: z.string(),
+      author: z.string(),
+  })).optional().describe("A list of books in the user's library."),
   chatHistory: z.array(z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string(),
@@ -45,10 +49,16 @@ Your goal is to provide responses that are not just accurate but also engaging, 
 
 When responding to the user, you must use the following structured format.
 
-If the user asks which books you know about, you should say that you have access to their full library and can answer questions about any of them.
-
 Here is the context for your response:
-1.  **RAG Context:** (This is where retrieved documents would go in a full RAG implementation). You have access to all books in the user's library.
+1.  **User's Library:**
+    {{#if library}}
+    The user has the following books in their library. You should use this list to inform your answers about what books you know about.
+    {{#each library}}
+      - "{{this.title}}" by {{this.author}}
+    {{/each}}
+    {{else}}
+    The user's library is currently empty.
+    {{/if}}
 2.  **Chat History:**
     {{#if chatHistory}}
     Here is the conversation so far:
