@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
 import type { ChatMessage, Chat, Book } from '@/lib/types';
-import { PanelLeft, Loader2, Plus, Trash2 } from 'lucide-react';
+import { PanelLeft, Loader2, Plus, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -28,6 +28,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { useToast } from '@/hooks/use-toast';
 
 export default function DashboardPage() {
@@ -43,6 +53,10 @@ export default function DashboardPage() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
   const { toast } = useToast();
+  
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
+  const [chatToRename, setChatToRename] = useState<Chat | null>(null);
+  const [newChatTitle, setNewChatTitle] = useState("");
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -181,20 +195,40 @@ export default function DashboardPage() {
         });
     }
   };
+  
+  const openRenameDialog = (chat: Chat) => {
+    setChatToRename(chat);
+    setNewChatTitle(chat.title);
+    setIsRenameDialogOpen(true);
+  };
+
+  const handleRenameSubmit = async () => {
+    if (!chatToRename || !newChatTitle.trim()) return;
+
+    try {
+      const chatDocRef = doc(db, 'chats', chatToRename.id);
+      await updateDoc(chatDocRef, { title: newChatTitle.trim() });
+      toast({
+        title: 'Success',
+        description: 'Conversation renamed.',
+      });
+    } catch (error) {
+      console.error("Error renaming chat:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not rename the conversation.',
+      });
+    } finally {
+      setIsRenameDialogOpen(false);
+      setChatToRename(null);
+      setNewChatTitle('');
+    }
+  };
+
 
   const handleSendMessage = async (content: string) => {
     if (!user || !activeChatId) return;
-
-    const activeChat = chats.find(c => c.id === activeChatId);
-    if (activeChat && activeChat.title === 'New Conversation' && messages.length === 0 && content.toLowerCase().trim() !== 'hi') {
-        try {
-            const chatDocRef = doc(db, 'chats', activeChatId);
-            const newTitle = content.length > 40 ? content.substring(0, 37) + '...' : content;
-            await updateDoc(chatDocRef, { title: newTitle });
-        } catch (error) {
-            console.error("Error updating chat title:", error);
-        }
-    }
 
     const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
     const messagesRef = collection(db, 'chats', activeChatId, 'messages');
@@ -217,6 +251,26 @@ export default function DashboardPage() {
         chatHistory: historyForAI,
         library: libraryForAI,
       });
+
+      const activeChat = chats.find(c => c.id === activeChatId);
+      if (activeChat && activeChat.title === 'New Conversation') {
+        try {
+            const chatDocRef = doc(db, 'chats', activeChatId);
+            let newTitle = '';
+
+            if (result.relevantBookTitle) {
+                newTitle = result.relevantBookTitle;
+            } else if (content.toLowerCase().trim() !== 'hi') {
+                newTitle = content.length > 40 ? content.substring(0, 37) + '...' : content;
+            }
+            
+            if (newTitle) {
+                await updateDoc(chatDocRef, { title: newTitle });
+            }
+        } catch (error) {
+            console.error("Error updating chat title:", error);
+        }
+      }
       
       let formattedResponse = result.mainResponse;
       if (result.followUpQuestions && result.followUpQuestions.length > 0) {
@@ -281,27 +335,37 @@ export default function DashboardPage() {
                             onClick={() => setActiveChatId(chat.id)}
                         >
                             <span className="truncate flex-1 pr-2">{chat.title}</span>
-                             <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                        This will permanently delete this conversation. This action cannot be undone.
-                                    </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDeleteChat(chat.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                        Delete
-                                    </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
+                            <div className="flex items-center opacity-0 group-hover:opacity-100">
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-6 w-6" 
+                                    onClick={(e) => { e.stopPropagation(); openRenameDialog(chat); }}
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                </Button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                            This will permanently delete this conversation. This action cannot be undone.
+                                        </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteChat(chat.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                            Delete
+                                        </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            </div>
                         </div>
                     ))}
                 </nav>
@@ -316,45 +380,75 @@ export default function DashboardPage() {
   }
 
   return (
-      <ResizablePanelGroup 
-        direction="horizontal" 
-        className="h-full w-full"
-        ref={panelGroupRef}
-        onLayout={(sizes) => {
-          if(sizes[0] < 5) {
-            setIsPanelCollapsed(true);
-          } else {
-            setIsPanelCollapsed(false);
-          }
-        }}
-      >
-        <ResizablePanel 
-          id="chat-list-panel"
-          defaultSize={25} 
-          minSize={isPanelCollapsed ? 0 : 15}
-          maxSize={40}
-          collapsible={true} 
-          collapsedSize={4}
-          className="flex flex-col bg-muted/30 border-r min-w-[55px] transition-all duration-300 ease-in-out"
+      <>
+        <ResizablePanelGroup 
+          direction="horizontal" 
+          className="h-full w-full"
+          ref={panelGroupRef}
+          onLayout={(sizes) => {
+            if(sizes[0] < 5) {
+              setIsPanelCollapsed(true);
+            } else {
+              setIsPanelCollapsed(false);
+            }
+          }}
         >
-          <ChatList />
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={75} minSize={30}>
-          <div className="flex flex-1 flex-col h-full">
-            {activeChatId ? (
-                <MainChat messages={messages} onSendMessage={handleSendMessage} isSending={isSending} />
-            ) : (
-                <div className="flex flex-col h-full items-center justify-center text-center p-4">
-                    <h2 className="text-xl font-headline">Welcome to BookWise</h2>
-                    <p className="text-muted-foreground">Select a chat to continue a conversation or start a new one.</p>
-                    <Button className="mt-4" onClick={handleNewChat}>
-                       <Plus className="mr-2 h-4 w-4" /> Start New Chat
-                    </Button>
-                </div>
-            )}
-          </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+          <ResizablePanel 
+            id="chat-list-panel"
+            defaultSize={25} 
+            minSize={isPanelCollapsed ? 0 : 15}
+            maxSize={40}
+            collapsible={true} 
+            collapsedSize={4}
+            className="flex flex-col bg-muted/30 border-r min-w-[55px] transition-all duration-300 ease-in-out"
+          >
+            <ChatList />
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={75} minSize={30}>
+            <div className="flex flex-1 flex-col h-full">
+              {activeChatId ? (
+                  <MainChat messages={messages} onSendMessage={handleSendMessage} isSending={isSending} />
+              ) : (
+                  <div className="flex flex-col h-full items-center justify-center text-center p-4">
+                      <h2 className="text-xl font-headline">Welcome to BookWise</h2>
+                      <p className="text-muted-foreground">Select a chat to continue a conversation or start a new one.</p>
+                      <Button className="mt-4" onClick={handleNewChat}>
+                         <Plus className="mr-2 h-4 w-4" /> Start New Chat
+                      </Button>
+                  </div>
+              )}
+            </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
+        
+        {chatToRename && (
+          <Dialog open={isRenameDialogOpen} onOpenChange={setIsRenameDialogOpen}>
+              <DialogContent>
+                  <DialogHeader>
+                      <DialogTitle>Rename Conversation</DialogTitle>
+                      <DialogDescription>
+                          Enter a new name for this conversation.
+                      </DialogDescription>
+                  </DialogHeader>
+                  <div className="py-4 space-y-2">
+                      <Label htmlFor="chat-title">
+                          New Title
+                      </Label>
+                      <Input 
+                          id="chat-title"
+                          value={newChatTitle}
+                          onChange={(e) => setNewChatTitle(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') handleRenameSubmit(); }}
+                      />
+                  </div>
+                  <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsRenameDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={handleRenameSubmit}>Save</Button>
+                  </DialogFooter>
+              </DialogContent>
+          </Dialog>
+        )}
+      </>
   );
 }

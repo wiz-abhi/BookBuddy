@@ -28,6 +28,7 @@ const MainChatOutputSchema = z.object({
   mainResponse: z.string().describe("The main, detailed, and human-like response to the user's query. This should be written in a conversational and engaging tone."),
   followUpQuestions: z.array(z.string()).describe("A list of three interesting follow-up questions the user might want to ask based on the main response. This helps guide the conversation."),
   didYouKnow: z.string().optional().describe("An optional, interesting fact or a piece of trivia related to the user's query or the books in the library."),
+  relevantBookTitle: z.string().optional().describe("The title of the book from the user's library that is most relevant to the current query. If the query is general and not about a specific book, leave this field empty."),
 });
 export type MainChatOutput = z.infer<typeof MainChatOutputSchema>;
 
@@ -47,7 +48,7 @@ const prompt = ai.definePrompt({
 
 Your goal is to provide responses that are not just accurate but also engaging, detailed, and human-like. You should sound like you're having a real conversation. Use a warm and approachable tone.
 
-When responding to the user, you must use the following structured format.
+**IMPORTANT:** If the user's query seems to be primarily about one specific book from their library, you MUST populate the 'relevantBookTitle' field with the exact title of that book. If the query is general or doesn't relate to a specific book, you should leave 'relevantBookTitle' empty.
 
 Here is the context for your response:
 1.  **User's Library:**
@@ -72,7 +73,7 @@ Here is the context for your response:
 Based on this context, please respond to the user's latest query:
 **User Query:** {{{query}}}
 
-Please formulate a comprehensive response that includes a main answer, suggest some follow-up questions, and optionally provide a fun fact.
+Please formulate a comprehensive response that includes a main answer, suggest some follow-up questions, and optionally provide a fun fact. Remember to set the 'relevantBookTitle' if applicable.
 `,
 });
 
