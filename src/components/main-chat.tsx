@@ -14,9 +14,10 @@ import { TypingIndicator } from './typing-indicator';
 interface MainChatProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => Promise<void>;
+  mobileHeader?: React.ReactNode;
 }
 
-export function MainChat({ messages, onSendMessage }: MainChatProps) {
+export function MainChat({ messages, onSendMessage, mobileHeader }: MainChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -47,11 +48,12 @@ export function MainChat({ messages, onSendMessage }: MainChatProps) {
   return (
     <div className="flex h-full flex-col items-center justify-center w-full">
         <Card className="w-full h-full flex-1 flex flex-col border-0 shadow-none rounded-none bg-transparent">
-            <CardHeader>
+            <CardHeader className="flex-row items-center justify-between">
                 <CardTitle className="font-headline flex items-center gap-2">
                     <Bot className="text-accent-foreground" />
                     BookWise AI Companion
                 </CardTitle>
+                {mobileHeader}
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden p-0">
                 <ScrollArea className="h-full" ref={scrollAreaRef}>

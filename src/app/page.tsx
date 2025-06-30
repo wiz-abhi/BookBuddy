@@ -1,8 +1,6 @@
-import { BookOpenCheck } from 'lucide-react';
+import { BookOpenCheck, BrainCircuit, MessagesSquare, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { BookCard } from '@/components/book-card';
-import { mockBooks } from '@/lib/data';
 
 export default function Home() {
   return (
@@ -26,7 +24,7 @@ export default function Home() {
         </div>
       </header>
       <main className="flex-1">
-        <section className="container mx-auto px-4 py-12 text-center md:py-20">
+        <section className="container mx-auto px-4 py-12 text-center md:py-20 lg:py-28">
           <h2 className="font-headline text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
             Your Personal AI Reading Companion
           </h2>
@@ -41,19 +39,36 @@ export default function Home() {
         </section>
 
         <section className="bg-muted/20 py-12 md:py-20">
-            <div className="container mx-auto px-4">
-                <h3 className="mb-8 text-center font-headline text-3xl font-bold text-foreground">
-                  Explore a World of Knowledge
-                </h3>
-                <div className="grid grid-cols-2 gap-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {mockBooks.map((book) => (
-                    <BookCard key={book.id} book={book} />
-                ))}
+          <div className="container mx-auto px-4">
+            <div className="mx-auto max-w-5xl">
+              <h3 className="mb-12 text-center font-headline text-3xl font-bold text-foreground">
+                Features to Enhance Your Reading
+              </h3>
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+                <div className="flex flex-col items-center text-center">
+                  <UploadCloud className="h-12 w-12 mb-4 text-primary" />
+                  <h4 className="font-headline text-xl font-semibold">Upload Your Library</h4>
+                  <p className="mt-2 text-muted-foreground">
+                    Easily upload your books in PDF format and build your personal digital library.
+                  </p>
                 </div>
-                <p className="mt-8 text-center text-sm text-muted-foreground">
-                ...and any other book you choose to upload!
-                </p>
+                <div className="flex flex-col items-center text-center">
+                  <MessagesSquare className="h-12 w-12 mb-4 text-primary" />
+                  <h4 className="font-headline text-xl font-semibold">Intelligent Chat</h4>
+                  <p className="mt-2 text-muted-foreground">
+                    Converse with an AI that has read your books. Ask questions, explore themes, and get summaries.
+                  </p>
+                </div>
+                <div className="flex flex-col items-center text-center">
+                  <BrainCircuit className="h-12 w-12 mb-4 text-primary" />
+                  <h4 className="font-headline text-xl font-semibold">Powered by RAG</h4>
+                  <p className="mt-2 text-muted-foreground">
+                    Our AI uses Retrieval-Augmented Generation to provide contextually-aware answers from your content.
+                  </p>
+                </div>
+              </div>
             </div>
+          </div>
         </section>
       </main>
       <footer className="border-t py-6">

@@ -19,8 +19,10 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { indexBook } from '@/ai/flows/book-indexing';
 import { Loader2, PlusCircle, Upload } from 'lucide-react';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, storage } from '@/lib/firebase';
 import { addDoc, collection } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import Image from 'next/image';
 
 const formSchema = z.object({
   title: z.string().min(1, { message: 'Title is required.' }),
@@ -32,12 +34,14 @@ const formSchema = z.object({
     }
   ),
   fileName: z.string().min(1),
+  coverImageFile: z.instanceof(File).optional(),
 });
 
 export function BookUploadDialog() {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -46,10 +50,11 @@ export function BookUploadDialog() {
       author: '',
       bookDataUri: '',
       fileName: '',
+      coverImageFile: undefined,
     },
   });
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBookFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type === 'application/pdf') {
       const reader = new FileReader();
@@ -69,6 +74,26 @@ export function BookUploadDialog() {
     }
   };
 
+  const handleCoverFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+        form.setValue('coverImageFile', file);
+        const reader = new FileReader();
+        reader.onload = (loadEvent) => {
+            setCoverPreview(loadEvent.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+    } else {
+        setCoverPreview(null);
+        form.setValue('coverImageFile', undefined);
+    }
+  }
+
+  const resetForm = () => {
+    form.reset();
+    setCoverPreview(null);
+  }
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!auth.currentUser) {
         toast({ variant: 'destructive', title: 'Not Authenticated', description: 'You must be logged in to upload a book.' });
@@ -78,12 +103,20 @@ export function BookUploadDialog() {
     try {
       const result = await indexBook({ bookDataUri: values.bookDataUri });
       if (result.success) {
+        let coverImageURL = `https://placehold.co/300x450?text=${encodeURIComponent(values.title)}`;
+        if (values.coverImageFile) {
+            const imageFile = values.coverImageFile;
+            const storageRef = ref(storage, `book-covers/${auth.currentUser.uid}/${Date.now()}_${imageFile.name}`);
+            await uploadBytes(storageRef, imageFile);
+            coverImageURL = await getDownloadURL(storageRef);
+        }
+
         await addDoc(collection(db, 'books'), {
             userId: auth.currentUser.uid,
             title: values.title,
             author: values.author,
             fileName: values.fileName,
-            coverImage: `https://placehold.co/300x450?text=${encodeURIComponent(values.title)}`, // Placeholder cover
+            coverImage: coverImageURL,
             aiHint: 'custom book',
         });
 
@@ -92,7 +125,7 @@ export function BookUploadDialog() {
           description: `"${values.title}" has been indexed and added to your library.`,
         });
         setOpen(false);
-        form.reset();
+        resetForm();
       } else {
         throw new Error(result.message);
       }
@@ -108,7 +141,7 @@ export function BookUploadDialog() {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) resetForm(); }}>
       <DialogTrigger asChild>
         <Button className="font-headline">
           <PlusCircle className="mr-2 h-4 w-4" />
@@ -119,7 +152,7 @@ export function BookUploadDialog() {
         <DialogHeader>
           <DialogTitle className="font-headline">Upload a New Book</DialogTitle>
           <DialogDescription>
-            Select a PDF file from your computer to add it to your library.
+            Select a PDF file and a cover image to add it to your library.
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -146,7 +179,7 @@ export function BookUploadDialog() {
                   <FormLabel>Book PDF</FormLabel>
                   <FormControl>
                     <div className="relative">
-                       <Input id="pdf-upload" type="file" accept=".pdf" onChange={handleFileChange} className="pr-12" />
+                       <Input id="pdf-upload" type="file" accept=".pdf" onChange={handleBookFileChange} className="pr-12" />
                        <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
                          <Upload className="h-5 w-5 text-muted-foreground" />
                        </div>
@@ -156,6 +189,22 @@ export function BookUploadDialog() {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="coverImageFile"
+              render={() => (
+                  <FormItem>
+                    <FormLabel>Cover Image (Optional)</FormLabel>
+                     <div className="flex items-center gap-4">
+                        {coverPreview && <Image src={coverPreview} alt="Cover preview" width={60} height={90} className="rounded-md object-cover" />}
+                        <FormControl>
+                            <Input id="cover-upload" type="file" accept="image/*" onChange={handleCoverFileChange} />
+                        </FormControl>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+              )}
+             />
             <DialogFooter>
               <Button type="submit" disabled={isLoading} className="font-headline">
                 {isLoading ? (

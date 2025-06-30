@@ -1,15 +1,59 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import type { Book } from '@/lib/types';
 import { ChatInterface } from '@/components/chat-interface';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { mockBooks } from '@/lib/data';
-import { notFound } from 'next/navigation';
+import { Button } from '@/components/ui/button';
 
 export default function BookPage({ params }: { params: { id: string } }) {
-  const book = mockBooks.find((b) => b.id === params.id);
+  const [book, setBook] = useState<Book | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchBook = async () => {
+      try {
+        const bookDocRef = doc(db, 'books', params.id);
+        const bookDoc = await getDoc(bookDocRef);
+        if (bookDoc.exists()) {
+          setBook({ id: bookDoc.id, ...bookDoc.data() } as Book);
+        } else {
+          setBook(null);
+        }
+      } catch (error) {
+        console.error("Error fetching book:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (params.id) {
+        fetchBook();
+    }
+  }, [params.id]);
+
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center">Loading book...</div>;
+  }
 
   if (!book) {
-    notFound();
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="font-headline text-2xl font-bold">Book Not Found</h1>
+          <p className="text-muted-foreground">The book you are looking for does not exist or you do not have permission to view it.</p>
+          <Button onClick={() => router.push('/dashboard')} className="mt-4">
+            Go to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -26,12 +70,6 @@ export default function BookPage({ params }: { params: { id: string } }) {
               <div className="prose prose-lg max-w-none font-body text-foreground">
                 <p>
                   This is a placeholder for the book reader interface. In a full implementation, the actual content of "{book.title}" would be displayed here, allowing you to scroll through and read the book. The text would be paginated or presented as a continuous scroll.
-                </p>
-                <p>
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed non risus. Suspendisse lectus tortor, dignissim sit amet, adipiscing nec, ultricies sed, dolor. Cras elementum ultrices diam. Maecenas ligula massa, varius a, semper congue, euismod non, mi. Proin porttitor, orci nec nonummy molestie, enim est eleifend mi, non fermentum diam nisl sit amet erat. Duis semper. Duis arcu massa, scelerisque vitae, consequat in, pretium a, enim. Pellentesque congue. Ut in risus volutpat libero pharetra tempor. Cras vestibulum bibendum augue. Praesent egestas leo in pede.
-                </p>
-                <p>
-                  Praesent blandit odio eu enim. Pellentesque sed dui ut augue blandit sodales. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae; Aliquam nibh. Mauris ac mauris sed pede pellentesque fermentum. Maecenas adipiscing ante non diam. Duis mi eros, varius nec, pulvinar in, semper vel, enim. Vivamus vel sem at sapien pulvinar ornare.
                 </p>
                 <p>
                   The companion chat on the right is where the magic happens. You can ask questions about the plot, characters, themes, or any other aspect of the book. The AI has been indexed on this specific book and will provide knowledgeable answers, helping you gain a deeper understanding of the text as you read.
