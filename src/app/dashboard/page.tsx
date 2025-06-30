@@ -212,12 +212,16 @@ export default function DashboardPage() {
         title: 'Success',
         description: 'Conversation renamed.',
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error renaming chat:", error);
+      let description = 'Could not rename the conversation.';
+      if (error.code === 'permission-denied') {
+        description = 'Permission denied. Please check your Firestore security rules to allow updates on chats.'
+      }
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Could not rename the conversation.',
+        description: description,
       });
     } finally {
       setIsRenameDialogOpen(false);
@@ -233,6 +237,7 @@ export default function DashboardPage() {
     const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
     const messagesRef = collection(db, 'chats', activeChatId, 'messages');
     
+    // Use a temporary state for the AI history to avoid race conditions with Firestore
     const tempMessages = [...messages, {role: 'user', content}];
     setIsSending(true);
 
@@ -253,7 +258,7 @@ export default function DashboardPage() {
       });
 
       const activeChat = chats.find(c => c.id === activeChatId);
-      if (activeChat && activeChat.title === 'New Conversation') {
+      if (activeChat && (activeChat.title === 'New Conversation' || activeChat.title.length > 30)) {
         try {
             const chatDocRef = doc(db, 'chats', activeChatId);
             let newTitle = '';
@@ -267,8 +272,17 @@ export default function DashboardPage() {
             if (newTitle) {
                 await updateDoc(chatDocRef, { title: newTitle });
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error updating chat title:", error);
+            let description = 'Could not automatically rename chat.';
+             if (error.code === 'permission-denied') {
+                description = 'Permission denied. Could not automatically rename the chat.'
+            }
+            toast({
+                variant: 'destructive',
+                title: 'Auto-Rename Failed',
+                description: description,
+            });
         }
       }
       
