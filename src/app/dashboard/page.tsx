@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
 import { mockChats } from '@/lib/data';
@@ -12,7 +13,37 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function DashboardPage() {
   const [chats, setChats] = useState<Chat[]>(mockChats);
-  const [activeChatId, setActiveChatId] = useState<string | null>(chats[0]?.id || null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load chats from localStorage on component mount
+  useEffect(() => {
+    try {
+      const storedChats = window.localStorage.getItem('bookwise_chats');
+      if (storedChats) {
+        const parsedChats = JSON.parse(storedChats);
+        setChats(parsedChats);
+        if (parsedChats.length > 0) {
+          setActiveChatId(parsedChats[0].id);
+        }
+      } else {
+        // If no stored chats, initialize with mock data and set active chat
+        setActiveChatId(mockChats[0]?.id || null);
+      }
+    } catch (error) {
+      console.error("Failed to parse chats from localStorage", error);
+      // Fallback to mock chats is already done in useState initial value
+      setActiveChatId(mockChats[0]?.id || null);
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // Save chats to localStorage whenever they change, but only after initial load
+  useEffect(() => {
+    if (isLoaded) {
+      window.localStorage.setItem('bookwise_chats', JSON.stringify(chats));
+    }
+  }, [chats, isLoaded]);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
 
@@ -22,7 +53,7 @@ export default function DashboardPage() {
 
   const handleNewChat = () => {
     const newChat: Chat = {
-      id: `chat${Date.now()}`,
+      id: `chat_${Date.now()}`,
       title: `New Chat`,
       messages: [{ role: 'assistant', content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?" }],
     };
@@ -35,8 +66,12 @@ export default function DashboardPage() {
 
     const userMessage: ChatMessage = { role: 'user', content };
 
+    // Create a new title for new chats on first user message
+    const isNewChat = activeChat.messages.length === 1 && activeChat.messages[0].role === 'assistant';
+    const newTitle = isNewChat ? (content.length > 30 ? content.substring(0, 27) + '...' : content) : activeChat.title;
+
     const updatedMessages = [...activeChat.messages, userMessage];
-    const updatedChat = { ...activeChat, messages: updatedMessages };
+    const updatedChat = { ...activeChat, messages: updatedMessages, title: newTitle };
 
     setChats(chats.map((chat) => (chat.id === activeChatId ? updatedChat : chat)));
 
@@ -53,7 +88,9 @@ export default function DashboardPage() {
       setChats(prevChats => {
         return prevChats.map(chat => {
           if (chat.id === activeChatId) {
-            return { ...chat, messages: [...updatedMessages, assistantMessage] };
+            // Ensure the title is also updated in the final state
+            const finalChat = { ...chat, messages: [...updatedMessages, assistantMessage], title: newTitle };
+            return finalChat;
           }
           return chat;
         });
