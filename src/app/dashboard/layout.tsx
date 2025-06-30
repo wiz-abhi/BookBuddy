@@ -21,7 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="rounded-lg bg-primary p-2 text-primary-foreground">
             <BookOpenCheck className="h-6 w-6" />
           </div>
-          <h1 className="font-headline text-2xl font-semibold text-primary-foreground hidden sm:block">
+          <h1 className="font-headline text-2xl font-semibold text-foreground hidden sm:block">
             BookWise
           </h1>
         </Link>
@@ -55,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="flex flex-1 bg-muted/20">
+      <main className="flex flex-1 bg-background">
         {children}
       </main>
     </div>
