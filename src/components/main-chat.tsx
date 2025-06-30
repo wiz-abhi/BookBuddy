@@ -21,7 +21,7 @@ export function MainChat({ messages, onSendMessage, mobileHeader }: MainChatProp
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const isAssistantResponding = messages[messages.length - 1]?.role === 'user';
+  const isAssistantResponding = messages.length > 0 && messages[messages.length - 1]?.role === 'user';
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -40,9 +40,14 @@ export function MainChat({ messages, onSendMessage, mobileHeader }: MainChatProp
     setInput('');
     setIsLoading(true);
     
-    await onSendMessage(messageToSend);
-
-    setIsLoading(false);
+    try {
+      await onSendMessage(messageToSend);
+    } catch (error) {
+        console.error("Error sending message:", error);
+        // Error is handled by the parent, which will post an error message.
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

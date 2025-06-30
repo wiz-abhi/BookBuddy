@@ -4,15 +4,17 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
 import type { Chat, ChatMessage } from '@/lib/types';
-import { PlusCircle, MessageSquare } from 'lucide-react';
+import { PlusCircle, MessageSquare, Trash2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, getDocs, doc, setDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
@@ -20,6 +22,9 @@ export default function DashboardPage() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -40,6 +45,12 @@ export default function DashboardPage() {
       const q = query(chatsRef, orderBy('createdAt', 'desc'));
 
       const unsubscribeFirestore = onSnapshot(q, async (querySnapshot) => {
+        if (querySnapshot.empty) {
+          await handleNewChat(user.uid);
+          setIsLoading(false);
+          return;
+        }
+
         const fetchedChatsPromises = querySnapshot.docs.map(async (chatDoc) => {
           const chatData = chatDoc.data();
           const messagesRef = collection(db, 'users', user.uid, 'chats', chatDoc.id, 'messages');
@@ -57,10 +68,8 @@ export default function DashboardPage() {
         const fetchedChats = await Promise.all(fetchedChatsPromises);
         
         setChats(fetchedChats);
-        if (fetchedChats.length > 0 && !activeChatId) {
+        if (fetchedChats.length > 0 && !activeChatId && !querySnapshot.metadata.hasPendingWrites) {
           setActiveChatId(fetchedChats[0].id);
-        } else if (fetchedChats.length === 0) {
-            handleNewChat();
         }
         setIsLoading(false);
       }, (error) => {
@@ -79,14 +88,15 @@ export default function DashboardPage() {
     setIsMobileSheetOpen(false);
   };
 
-  const handleNewChat = async () => {
-    if (!user) return;
+  const handleNewChat = async (uid?: string) => {
+    const userId = uid || user?.uid;
+    if (!userId) return;
     const newChatData = {
       title: 'New Chat',
-      userId: user.uid,
+      userId: userId,
       createdAt: serverTimestamp(),
     };
-    const chatsRef = collection(db, 'users', user.uid, 'chats');
+    const chatsRef = collection(db, 'users', userId, 'chats');
     const newChatRef = await addDoc(chatsRef, newChatData);
 
     const initialMessage = {
@@ -94,11 +104,12 @@ export default function DashboardPage() {
       content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?",
       timestamp: serverTimestamp(),
     };
-    const messagesRef = collection(db, 'users', user.uid, 'chats', newChatRef.id, 'messages');
+    const messagesRef = collection(db, 'users', userId, 'chats', newChatRef.id, 'messages');
     await addDoc(messagesRef, initialMessage);
 
     setActiveChatId(newChatRef.id);
     setIsMobileSheetOpen(false);
+    return newChatRef.id;
   };
 
   const handleSendMessage = async (content: string) => {
@@ -132,28 +143,78 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteChat = async () => {
+    if (!chatToDelete || !user) return;
+
+    try {
+      const messagesRef = collection(db, 'users', user.uid, 'chats', chatToDelete, 'messages');
+      const messagesSnapshot = await getDocs(messagesRef);
+      const deletePromises = messagesSnapshot.docs.map((doc) => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      const chatDocRef = doc(db, 'users', user.uid, 'chats', chatToDelete);
+      await deleteDoc(chatDocRef);
+      
+      toast({
+        title: "Chat Deleted",
+        description: "The conversation has been removed."
+      });
+
+      if (activeChatId === chatToDelete) {
+        const remainingChats = chats.filter(c => c.id !== chatToDelete);
+        setActiveChatId(remainingChats.length > 0 ? remainingChats[0].id : null);
+      }
+    } catch (error) {
+      console.error("Error deleting chat: ", error);
+      toast({
+        variant: "destructive",
+        title: "Deletion Failed",
+        description: "There was a problem deleting the chat."
+      })
+    } finally {
+      setIsDeleteDialogOpen(false);
+      setChatToDelete(null);
+    }
+  };
+
+  const openDeleteDialog = (chatId: string) => {
+    setChatToDelete(chatId);
+    setIsDeleteDialogOpen(true);
+  };
+
   const ChatList = () => (
     <>
       <div className="p-4 flex justify-between items-center border-b">
         <h2 className="text-lg font-headline">My Chats</h2>
-        <Button variant="ghost" size="icon" onClick={handleNewChat} aria-label="New Chat">
+        <Button variant="ghost" size="icon" onClick={() => handleNewChat()} aria-label="New Chat">
           <PlusCircle className="h-5 w-5" />
         </Button>
       </div>
       <ScrollArea className="flex-1">
         <nav className="p-2 space-y-1">
           {chats.map((chat) => (
-            <Button
+            <div
               key={chat.id}
-              variant="ghost"
               onClick={() => handleSelectChat(chat.id)}
               className={cn(
-                'w-full justify-start truncate h-auto py-2',
-                activeChatId === chat.id && 'bg-accent text-accent-foreground'
+                'group flex items-center justify-between w-full p-2 rounded-md cursor-pointer text-sm h-auto',
+                'hover:bg-accent',
+                activeChatId === chat.id ? 'bg-accent text-accent-foreground' : 'text-foreground'
               )}
             >
-              {chat.title}
-            </Button>
+              <span className="truncate flex-1 pr-2">{chat.title}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                onClick={(e) => {
+                    e.stopPropagation();
+                    openDeleteDialog(chat.id);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           ))}
         </nav>
       </ScrollArea>
@@ -161,25 +222,25 @@ export default function DashboardPage() {
   );
 
   if (isLoading) {
-    return <div className="flex h-screen w-full items-center justify-center">Loading chats...</div>;
+    return <div className="flex h-screen w-full items-center justify-center gap-2"><Loader2 className="animate-spin" />Loading chats...</div>;
   }
 
   return (
     <>
       {/* Desktop View */}
       <ResizablePanelGroup direction="horizontal" className="h-full w-full hidden md:flex">
-        <ResizablePanel defaultSize={25} minSize={20} maxSize={40} className="flex flex-col bg-muted/30 border-r">
+        <ResizablePanel defaultSize={25} minSize={15} collapsible={true} collapsedSize={4} className="flex flex-col bg-muted/30 border-r min-w-[220px]">
           <ChatList />
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={75}>
+        <ResizablePanel defaultSize={75} minSize={40}>
           <div className="flex flex-1 flex-col h-full">
             {activeChat ? (
               <MainChat key={activeChat.id} messages={activeChat.messages} onSendMessage={handleSendMessage} />
             ) : (
               <div className="flex flex-1 items-center justify-center text-muted-foreground flex-col gap-4">
                 <p>Select a chat or start a new one.</p>
-                <Button onClick={handleNewChat}><PlusCircle className="mr-2 h-4 w-4" /> New Chat</Button>
+                <Button onClick={() => handleNewChat()}><PlusCircle className="mr-2 h-4 w-4" /> New Chat</Button>
               </div>
             )}
           </div>
@@ -210,13 +271,29 @@ export default function DashboardPage() {
         ) : (
           <div className="flex flex-1 items-center justify-center text-muted-foreground flex-col gap-4 p-4 text-center">
             <p>No chats found. Start a conversation!</p>
-            <Button onClick={handleNewChat}>
+            <Button onClick={() => handleNewChat()}>
               <PlusCircle className="mr-2 h-4 w-4" />
               New Chat
             </Button>
           </div>
         )}
       </div>
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this
+              conversation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteChat}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
