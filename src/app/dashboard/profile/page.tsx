@@ -11,7 +11,7 @@ import { Loader2, User, Upload } from 'lucide-react';
 import { auth, db, storage } from '@/lib/firebase';
 import { onAuthStateChanged, updateProfile } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { useRouter } from 'next/navigation';
 import type { User as AppUser } from '@/lib/types';
@@ -93,12 +93,12 @@ export default function ProfilePage() {
         photoURL: photoURL,
       });
 
-      // Update Firestore document
+      // Update Firestore document. Use setDoc with merge to prevent errors.
       const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, {
+      await setDoc(userDocRef, {
         name: name,
         photoURL: photoURL,
-      });
+      }, { merge: true });
       
       setNewImage(null);
       toast({
