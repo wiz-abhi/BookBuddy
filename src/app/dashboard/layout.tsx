@@ -1,6 +1,6 @@
 'use client';
 
-import { BookOpenCheck, Library, LogOut, User } from 'lucide-react';
+import { BookOpenCheck, Library, LogOut, User, Database, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -26,6 +26,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import type { User as AppUser } from '@/lib/types';
+import { useToast } from "@/hooks/use-toast";
 
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -62,6 +64,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push('/');
   };
 
+  const handleConnectionCheck = async () => {
+    if (!user) {
+        toast({
+            variant: 'destructive',
+            title: 'Not Authenticated',
+            description: 'You must be logged in to check the database connection.',
+        });
+        return;
+    }
+    
+    try {
+        const userDocRef = doc(db, 'users', user.uid);
+        await getDoc(userDocRef);
+        toast({
+            title: 'Success',
+            description: 'Database connection is healthy.',
+            action: <CheckCircle className="text-green-500" />,
+        });
+    } catch (error: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Connection Failed',
+            description: `Could not connect to the database. ${error.message}`,
+            action: <XCircle className="text-white" />,
+        });
+    }
+  };
+
   if (loading) {
     return <div className="flex h-screen items-center justify-center">Loading...</div>;
   }
@@ -82,7 +112,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </Link>
         
         <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" onClick={handleConnectionCheck}>
+              <Database className="mr-2 h-4 w-4" />
+              Check DB
+            </Button>
             <Sheet>
               <SheetTrigger asChild>
                 <Button>

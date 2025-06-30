@@ -12,11 +12,13 @@ import {
 import { auth, db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { useToast } from '@/hooks/use-toast';
 
 export function LibrarySheetContent() {
   const [user, setUser] = useState<User | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -33,13 +35,21 @@ export function LibrarySheetContent() {
         const userBooks = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Book));
         setBooks(userBooks);
         setLoading(false);
+      }, (error) => {
+        console.error("Error fetching books:", error);
+        toast({
+            variant: 'destructive',
+            title: 'Could Not Load Library',
+            description: 'Failed to fetch your books. Please try again later.',
+        });
+        setLoading(false);
       });
       return () => unsubscribeFirestore();
     } else {
       setBooks([]);
       setLoading(false);
     }
-  }, [user]);
+  }, [user, toast]);
 
   return (
     <div className="flex h-full flex-col">

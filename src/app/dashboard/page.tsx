@@ -28,6 +28,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { useToast } from '@/hooks/use-toast';
 
 export default function DashboardPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -74,10 +76,18 @@ export default function DashboardPage() {
         setMessages([]);
       }
       setIsLoading(false);
+    }, (error) => {
+        console.error("Error fetching chats: ", error);
+        toast({
+            variant: 'destructive',
+            title: 'Error Loading Chats',
+            description: 'Could not load your conversations. Please try again later.',
+        });
+        setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user, activeChatId]);
+  }, [user, activeChatId, toast]);
 
 
   useEffect(() => {
@@ -93,19 +103,35 @@ export default function DashboardPage() {
         chatMessages.push(doc.data() as ChatMessage);
       });
       setMessages(chatMessages);
+    }, (error) => {
+        console.error("Error fetching messages: ", error);
+        toast({
+            variant: 'destructive',
+            title: 'Error Loading Messages',
+            description: 'Could not load messages for this chat.',
+        });
     });
 
     return () => unsubscribe();
-  }, [activeChatId]);
+  }, [activeChatId, toast]);
 
   const handleNewChat = async () => {
     if (!user) return;
-    const newChatRef = await addDoc(collection(db, 'chats'), {
-        userId: user.uid,
-        title: 'New Conversation',
-        createdAt: serverTimestamp(),
-    });
-    setActiveChatId(newChatRef.id);
+    try {
+        const newChatRef = await addDoc(collection(db, 'chats'), {
+            userId: user.uid,
+            title: 'New Conversation',
+            createdAt: serverTimestamp(),
+        });
+        setActiveChatId(newChatRef.id);
+    } catch (error) {
+        console.error("Error creating new chat: ", error);
+        toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Could not create a new chat. Please try again.',
+        });
+    }
   };
 
   const handleDeleteChat = async (chatId: string) => {
@@ -127,6 +153,11 @@ export default function DashboardPage() {
         }
     } catch (error) {
         console.error("Error deleting chat: ", error);
+        toast({
+            variant: 'destructive',
+            title: 'Error Deleting Chat',
+            description: 'The chat could not be deleted. Please try again.',
+        });
     }
   };
 

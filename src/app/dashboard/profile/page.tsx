@@ -34,13 +34,22 @@ export default function ProfilePage() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data() as AppUser;
-          setName(userData.name || '');
-          setEmail(userData.email || '');
-          setProfileImage(userData.photoURL);
+        try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+              const userData = userDoc.data() as AppUser;
+              setName(userData.name || '');
+              setEmail(userData.email || '');
+              setProfileImage(userData.photoURL);
+            }
+        } catch (error) {
+            console.error("Failed to fetch user profile:", error);
+            toast({
+                variant: 'destructive',
+                title: 'Profile Load Error',
+                description: 'Could not load your profile data.',
+            });
         }
       } else {
         router.push('/login');
@@ -48,7 +57,7 @@ export default function ProfilePage() {
       setIsLoading(false);
     });
     return () => unsubscribe();
-  }, [router]);
+  }, [router, toast]);
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

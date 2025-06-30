@@ -10,11 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 export default function BookPage({ params }: { params: { id: string } }) {
   const [book, setBook] = useState<Book | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchBook = async () => {
@@ -28,6 +30,11 @@ export default function BookPage({ params }: { params: { id: string } }) {
         }
       } catch (error) {
         console.error("Error fetching book:", error);
+        toast({
+            variant: 'destructive',
+            title: 'Failed to Load Book',
+            description: 'There was a problem fetching the book details from the database.',
+        });
       } finally {
         setLoading(false);
       }
@@ -36,7 +43,7 @@ export default function BookPage({ params }: { params: { id: string } }) {
     if (params.id) {
         fetchBook();
     }
-  }, [params.id]);
+  }, [params.id, toast]);
 
   if (loading) {
     return <div className="flex h-screen items-center justify-center">Loading book...</div>;
