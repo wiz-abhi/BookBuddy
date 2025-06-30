@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
 import type { ChatMessage } from '@/lib/types';
-import { PanelLeft, Bot, Loader2 } from 'lucide-react';
+import { PanelLeft, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -56,10 +56,10 @@ export default function DashboardPage() {
 
   const handleSendMessage = async (content: string) => {
     const userMessage: ChatMessage = { role: 'user', content };
-    setIsSending(true);
     
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    setIsSending(true);
 
     try {
       // Build history from the most up-to-date state
@@ -72,7 +72,18 @@ export default function DashboardPage() {
         chatHistory: historyForAI,
       });
 
-      const assistantMessage: ChatMessage = { role: 'assistant', content: result.response };
+      let formattedResponse = result.mainResponse;
+      if (result.followUpQuestions && result.followUpQuestions.length > 0) {
+          formattedResponse += "\n\n**Here are some things you could ask next:**";
+          result.followUpQuestions.forEach(q => {
+              formattedResponse += `\n- "${q}"`;
+          });
+      }
+      if (result.didYouKnow) {
+          formattedResponse += `\n\n**Did you know?**\n${result.didYouKnow}`;
+      }
+
+      const assistantMessage: ChatMessage = { role: 'assistant', content: formattedResponse };
       setMessages((prevMessages) => [...prevMessages, assistantMessage]);
 
     } catch (error: any) {

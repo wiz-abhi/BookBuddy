@@ -75,7 +75,7 @@ export function MainChat({ messages, onSendMessage, isSending, mobileHeader }: M
                             : 'bg-muted'
                         )}
                         >
-                        <p className="text-sm">{message.content}</p>
+                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                         </div>
                         {message.role === 'user' && (
                         <Avatar className="h-8 w-8">

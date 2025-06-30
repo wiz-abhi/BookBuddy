@@ -52,7 +52,18 @@ export function ChatInterface({ bookId, bookTitle }: ChatInterfaceProps) {
         chatHistory,
       });
 
-      const assistantMessage: ChatMessage = { role: 'assistant', content: result.response };
+      let formattedResponse = result.mainResponse;
+      if (result.followUpQuestions && result.followUpQuestions.length > 0) {
+          formattedResponse += "\n\n**Perhaps you could ask:**";
+          result.followUpQuestions.forEach(q => {
+              formattedResponse += `\n- "${q}"`;
+          });
+      }
+      if (result.pageReference) {
+          formattedResponse += `\n\n(You can find more on this around ${result.pageReference})`;
+      }
+
+      const assistantMessage: ChatMessage = { role: 'assistant', content: formattedResponse };
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error: any) {
       console.error("Error calling book companion flow:", error);
@@ -96,7 +107,7 @@ export function ChatInterface({ bookId, bookTitle }: ChatInterfaceProps) {
                       : 'bg-card'
                   )}
                 >
-                  <p className="text-sm">{message.content}</p>
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 </div>
                  {message.role === 'user' && (
                   <Avatar className="h-8 w-8">
