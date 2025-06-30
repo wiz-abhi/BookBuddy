@@ -20,6 +20,7 @@ const LOCAL_STORAGE_KEY = 'bookwise-chat-messages';
 export default function DashboardPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
@@ -55,8 +56,8 @@ export default function DashboardPage() {
 
   const handleSendMessage = async (content: string) => {
     const userMessage: ChatMessage = { role: 'user', content };
+    setIsSending(true);
     
-    // Use a function for the state update to get the most recent state
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
 
@@ -79,20 +80,19 @@ export default function DashboardPage() {
       const detailedError = `Sorry, I encountered an error and could not get a response. Error: ${error.message ?? 'Unknown error'}`;
       const errorMessage: ChatMessage = { role: 'assistant', content: detailedError };
       setMessages((prevMessages) => [...prevMessages, errorMessage]);
+    } finally {
+      setIsSending(false);
     }
   };
 
   const togglePanel = () => {
     const group = panelGroupRef.current;
     if (group) {
-      const panel = group.getPanel('chat-list-panel');
-      if (panel) {
-        if (panel.isCollapsed()) {
-          panel.expand();
+        if (isPanelCollapsed) {
+            group.setLayout([25, 75]);
         } else {
-          panel.collapse();
+            group.setLayout([4, 96]);
         }
-      }
     }
   };
   
@@ -152,7 +152,7 @@ export default function DashboardPage() {
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={75} minSize={30}>
           <div className="flex flex-1 flex-col h-full">
-            <MainChat messages={messages} onSendMessage={handleSendMessage} />
+            <MainChat messages={messages} onSendMessage={handleSendMessage} isSending={isSending} />
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>

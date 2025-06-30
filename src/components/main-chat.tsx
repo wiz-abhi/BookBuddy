@@ -14,14 +14,14 @@ import { TypingIndicator } from './typing-indicator';
 interface MainChatProps {
   messages: ChatMessage[];
   onSendMessage: (message: string) => Promise<void>;
+  isSending: boolean;
   mobileHeader?: React.ReactNode;
 }
 
-export function MainChat({ messages, onSendMessage, mobileHeader }: MainChatProps) {
+export function MainChat({ messages, onSendMessage, isSending, mobileHeader }: MainChatProps) {
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const isAssistantResponding = messages.length > 0 && messages[messages.length - 1]?.role === 'user';
+  const isAssistantResponding = isSending;
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -34,20 +34,11 @@ export function MainChat({ messages, onSendMessage, mobileHeader }: MainChatProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isSending) return;
 
     const messageToSend = input;
     setInput('');
-    setIsLoading(true);
-    
-    try {
-      await onSendMessage(messageToSend);
-    } catch (error) {
-        console.error("Error sending message:", error);
-        // Error is handled by the parent, which will post an error message.
-    } finally {
-      setIsLoading(false);
-    }
+    await onSendMessage(messageToSend);
   };
 
   return (
@@ -112,10 +103,10 @@ export function MainChat({ messages, onSendMessage, mobileHeader }: MainChatProp
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask something about your books..."
-                    disabled={isLoading || isAssistantResponding}
+                    disabled={isSending}
                     autoComplete="off"
                 />
-                <Button type="submit" size="icon" disabled={isLoading || isAssistantResponding}>
+                <Button type="submit" size="icon" disabled={isSending}>
                     <Send className="h-4 w-4" />
                 </Button>
                 </form>
