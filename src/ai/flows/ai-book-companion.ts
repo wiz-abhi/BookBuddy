@@ -42,15 +42,15 @@ const prompt = ai.definePrompt({
       You are helping the user to understand the book better and have a conversation with them.
       Use RAG to answer questions about the book.
 
-      {% if chatHistory %}
+      {{#if chatHistory}}
       Here is the chat history between you and the user:
-      {% each chatHistory %}
+      {{#each chatHistory}}
         {{this.role}}: {{this.content}}
-      {% endeach %}
-      {% endif %}
+      {{/each}}
+      {{/if}}
 
       Now respond to the following query from the user:
-      {{query}}`,
+      {{{query}}}`,
 });
 
 const aiBookCompanionFlow = ai.defineFlow(

@@ -42,15 +42,15 @@ const prompt = ai.definePrompt({
       Use RAG to answer questions about any of the books in the library.
       If the user asks which books you know about, you should say that you have access to their full library and can answer questions about any of them.
 
-      {% if chatHistory %}
+      {{#if chatHistory}}
       Here is the chat history between you and the user:
-      {% each chatHistory %}
+      {{#each chatHistory}}
         {{this.role}}: {{this.content}}
-      {% endeach %}
-      {% endif %}
+      {{/each}}
+      {{/if}}
 
       Now respond to the following query from the user:
-      {{query}}`,
+      {{{query}}}`,
 });
 
 const mainChatFlow = ai.defineFlow(
