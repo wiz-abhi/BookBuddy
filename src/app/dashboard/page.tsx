@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
-import type { ChatMessage } from '@/lib/types';
-import { PanelLeft, Loader2 } from 'lucide-react';
+import type { ChatMessage, Chat } from '@/lib/types';
+import { PanelLeft, Loader2, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -14,64 +14,145 @@ import {
   ResizablePanelGroup,
 } from '@/components/ui/resizable';
 import type { ImperativePanelGroupHandle } from 'react-resizable-panels';
-
-const LOCAL_STORAGE_KEY = 'bookwise-chat-messages';
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, doc, orderBy, getDocs, writeBatch, deleteDoc } from 'firebase/firestore';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 export default function DashboardPage() {
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
 
-  // Load messages from localStorage on initial client-side render
   useEffect(() => {
-    try {
-      const storedMessages = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (storedMessages) {
-        setMessages(JSON.parse(storedMessages));
-      } else {
-        // If no history, start with a welcome message.
-        setMessages([
-          { role: 'assistant', content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?" }
-        ]);
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to parse messages from localStorage", error);
-       // Start with a clean slate if parsing fails
-       setMessages([
-        { role: 'assistant', content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?" }
-      ]);
-    }
-    setIsLoading(false);
+    });
+    return () => unsubscribeAuth();
   }, []);
 
-  // Save messages to localStorage whenever they change
   useEffect(() => {
-    // We don't want to save the initial empty array or while loading.
-    if (!isLoading && messages.length > 0) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(messages));
+    if (!user) return;
+
+    setIsLoading(true);
+    const q = query(collection(db, 'chats'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const userChats: Chat[] = [];
+      querySnapshot.forEach((doc) => {
+        userChats.push({ id: doc.id, ...doc.data() } as Chat);
+      });
+      setChats(userChats);
+      
+      if (!activeChatId && userChats.length > 0) {
+        setActiveChatId(userChats[0].id);
+      } else if (userChats.length === 0) {
+        setActiveChatId(null);
+        setMessages([]);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user, activeChatId]);
+
+
+  useEffect(() => {
+    if (!activeChatId) {
+      setMessages([]);
+      return;
+    };
+
+    const messagesQuery = query(collection(db, 'chats', activeChatId, 'messages'), orderBy('timestamp'));
+    const unsubscribe = onSnapshot(messagesQuery, (querySnapshot) => {
+      const chatMessages: ChatMessage[] = [];
+      querySnapshot.forEach(doc => {
+        chatMessages.push(doc.data() as ChatMessage);
+      });
+      setMessages(chatMessages);
+    });
+
+    return () => unsubscribe();
+  }, [activeChatId]);
+
+  const handleNewChat = async () => {
+    if (!user) return;
+    const newChatRef = await addDoc(collection(db, 'chats'), {
+        userId: user.uid,
+        title: 'New Conversation',
+        createdAt: serverTimestamp(),
+    });
+    setActiveChatId(newChatRef.id);
+  };
+
+  const handleDeleteChat = async (chatId: string) => {
+    try {
+        const chatDocRef = doc(db, 'chats', chatId);
+        const messagesCollectionRef = collection(chatDocRef, 'messages');
+        const messagesSnapshot = await getDocs(messagesCollectionRef);
+        
+        const batch = writeBatch(db);
+        messagesSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+
+        await deleteDoc(chatDocRef);
+
+        if (activeChatId === chatId) {
+            setActiveChatId(null);
+        }
+    } catch (error) {
+        console.error("Error deleting chat: ", error);
     }
-  }, [messages, isLoading]);
+  };
 
   const handleSendMessage = async (content: string) => {
-    const userMessage: ChatMessage = { role: 'user', content };
+    if (!user || !activeChatId) return;
+
+    const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
+    const messagesRef = collection(db, 'chats', activeChatId, 'messages');
     
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
+    // Optimistically update UI
+    const tempMessages = [...messages, {role: 'user', content}];
     setIsSending(true);
 
     try {
-      // Build history from the most up-to-date state
-      const historyForAI = updatedMessages
-        .slice(0, -1) // Exclude the current user query from history
-        .map(msg => ({ role: msg.role, content: msg.content }));
-      
+      await addDoc(messagesRef, userMessage);
+
+      const historyForAI = tempMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }));
+
       const result = await mainChat({
         query: content,
         chatHistory: historyForAI,
       });
-
+      
       let formattedResponse = result.mainResponse;
       if (result.followUpQuestions && result.followUpQuestions.length > 0) {
           formattedResponse += "\n\n**Here are some things you could ask next:**";
@@ -82,15 +163,15 @@ export default function DashboardPage() {
       if (result.didYouKnow) {
           formattedResponse += `\n\n**Did you know?**\n${result.didYouKnow}`;
       }
-
-      const assistantMessage: ChatMessage = { role: 'assistant', content: formattedResponse };
-      setMessages((prevMessages) => [...prevMessages, assistantMessage]);
+      
+      const assistantMessage: ChatMessage = { role: 'assistant', content: formattedResponse, timestamp: serverTimestamp() };
+      await addDoc(messagesRef, assistantMessage);
 
     } catch (error: any) {
-      console.error("Error calling mainChat flow:", error);
-      const detailedError = `Sorry, I encountered an error and could not get a response. Error: ${error.message ?? 'Unknown error'}`;
-      const errorMessage: ChatMessage = { role: 'assistant', content: detailedError };
-      setMessages((prevMessages) => [...prevMessages, errorMessage]);
+      console.error("Error calling mainChat flow or saving messages:", error);
+      const detailedError = `Sorry, I encountered an error. Error: ${error.message ?? 'Unknown error'}`;
+      const errorMessage: ChatMessage = { role: 'assistant', content: detailedError, timestamp: serverTimestamp() };
+      await addDoc(messagesRef, errorMessage);
     } finally {
       setIsSending(false);
     }
@@ -106,7 +187,7 @@ export default function DashboardPage() {
         }
     }
   };
-  
+
   const ChatList = () => (
     <div className={cn("flex flex-col h-full", isPanelCollapsed && 'items-center')}>
       <div className="p-4 flex justify-between items-center border-b">
@@ -116,24 +197,57 @@ export default function DashboardPage() {
         </Button>
       </div>
       {!isPanelCollapsed && (
-        <ScrollArea className="flex-1">
-          <nav className="p-2 space-y-1">
-              <div
-                className={cn(
-                  'group flex items-center justify-between w-full p-2 rounded-md text-sm h-auto',
-                  'bg-accent text-accent-foreground'
-                )}
-              >
-                <span className="truncate flex-1 pr-2">Main Conversation</span>
-              </div>
-          </nav>
-        </ScrollArea>
+        <>
+            <div className="p-2 border-b">
+                <Button className="w-full" variant="outline" onClick={handleNewChat}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    New Chat
+                </Button>
+            </div>
+            <ScrollArea className="flex-1">
+                <nav className="p-2 space-y-1">
+                    {chats.map(chat => (
+                        <div
+                            key={chat.id}
+                            className={cn(
+                            'group flex items-center justify-between w-full p-2 rounded-md text-sm h-auto cursor-pointer hover:bg-muted',
+                            activeChatId === chat.id && 'bg-accent text-accent-foreground'
+                            )}
+                            onClick={() => setActiveChatId(chat.id)}
+                        >
+                            <span className="truncate flex-1 pr-2">{chat.title}</span>
+                             <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={(e) => e.stopPropagation()}>
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This will permanently delete this conversation. This action cannot be undone.
+                                    </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDeleteChat(chat.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                        Delete
+                                    </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </div>
+                    ))}
+                </nav>
+            </ScrollArea>
+        </>
       )}
     </div>
   );
 
   if (isLoading) {
-    return <div className="flex h-screen w-full items-center justify-center gap-2"><Loader2 className="animate-spin" />Loading chat...</div>;
+    return <div className="flex h-screen w-full items-center justify-center gap-2"><Loader2 className="animate-spin" />Loading chats...</div>;
   }
 
   return (
@@ -163,7 +277,17 @@ export default function DashboardPage() {
         <ResizableHandle withHandle />
         <ResizablePanel defaultSize={75} minSize={30}>
           <div className="flex flex-1 flex-col h-full">
-            <MainChat messages={messages} onSendMessage={handleSendMessage} isSending={isSending} />
+            {activeChatId ? (
+                <MainChat messages={messages} onSendMessage={handleSendMessage} isSending={isSending} />
+            ) : (
+                <div className="flex flex-col h-full items-center justify-center text-center p-4">
+                    <h2 className="text-xl font-headline">Welcome to BookWise</h2>
+                    <p className="text-muted-foreground">Select a chat to continue a conversation or start a new one.</p>
+                    <Button className="mt-4" onClick={handleNewChat}>
+                       <Plus className="mr-2 h-4 w-4" /> Start New Chat
+                    </Button>
+                </div>
+            )}
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
