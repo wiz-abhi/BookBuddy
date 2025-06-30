@@ -9,16 +9,18 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Send, Bot, User } from 'lucide-react';
 import type { ChatMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { mainChat } from '@/ai/flows/main-chat';
 import { TypingIndicator } from './typing-indicator';
 
-export function MainChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: 'assistant', content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?" }
-  ]);
+interface MainChatProps {
+  messages: ChatMessage[];
+  onSendMessage: (message: string) => Promise<void>;
+}
+
+export function MainChat({ messages, onSendMessage }: MainChatProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const isAssistantResponding = messages[messages.length - 1]?.role === 'user';
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -29,36 +31,22 @@ export function MainChat() {
     }
   }, [messages]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const messageToSend = input;
     setInput('');
     setIsLoading(true);
+    
+    await onSendMessage(messageToSend);
 
-    try {
-      const chatHistory = messages.map(msg => ({ role: msg.role, content: msg.content }));
-      
-      const result = await mainChat({
-        query: input,
-        chatHistory,
-      });
-
-      const assistantMessage: ChatMessage = { role: 'assistant', content: result.response };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      const errorMessage: ChatMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+    setIsLoading(false);
   };
 
   return (
-    <div className="flex h-full flex-col items-center justify-center p-4 w-full">
-        <Card className="w-full max-w-4xl flex-1 flex flex-col">
+    <div className="flex h-full flex-col items-center justify-center w-full">
+        <Card className="w-full h-full flex-1 flex flex-col border-0 shadow-none rounded-none bg-transparent">
             <CardHeader>
                 <CardTitle className="font-headline flex items-center gap-2">
                     <Bot className="text-accent-foreground" />
@@ -98,12 +86,12 @@ export function MainChat() {
                         )}
                     </div>
                     ))}
-                    {isLoading && (
+                    {isAssistantResponding && (
                     <div className="flex items-start gap-3 justify-start">
                         <Avatar className="h-8 w-8">
                         <AvatarFallback className="bg-accent text-accent-foreground"><Bot size={20} /></AvatarFallback>
                         </Avatar>
-                        <div className="max-w-xs rounded-lg px-4 py-2 md:max-w-md bg-card">
+                        <div className="max-w-xs rounded-lg px-4 py-2 md:max-w-md bg-muted">
                         <TypingIndicator />
                         </div>
                     </div>
@@ -111,16 +99,16 @@ export function MainChat() {
                 </div>
                 </ScrollArea>
             </CardContent>
-            <CardFooter className="border-t p-4">
-                <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+            <CardFooter className="border-t p-4 bg-background">
+                <form onSubmit={handleSubmit} className="flex w-full items-center gap-2">
                 <Input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="Ask something about your books..."
-                    disabled={isLoading}
+                    disabled={isLoading || isAssistantResponding}
                     autoComplete="off"
                 />
-                <Button type="submit" size="icon" disabled={isLoading}>
+                <Button type="submit" size="icon" disabled={isLoading || isAssistantResponding}>
                     <Send className="h-4 w-4" />
                 </Button>
                 </form>

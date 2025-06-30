@@ -12,7 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen w-full flex-col">
+    <div className="flex h-screen w-full flex-col">
       <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 z-50">
         <Link
           href="/dashboard"
@@ -55,7 +55,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="flex flex-1 bg-background">
+      <main className="flex flex-1 overflow-hidden">
         {children}
       </main>
     </div>
