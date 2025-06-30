@@ -59,7 +59,13 @@ export function ChatInterface({ bookId, bookTitle }: ChatInterfaceProps) {
               formattedResponse += `\n- "${q}"`;
           });
       }
-      if (result.pageReference) {
+
+      if (result.quote) {
+          formattedResponse += `\n\n**From the book:**\n*"${result.quote}"*`;
+          if (result.pageReference) {
+              formattedResponse += `\n- *${result.pageReference}*`;
+          }
+      } else if (result.pageReference) {
           formattedResponse += `\n\n(You can find more on this around ${result.pageReference})`;
       }
 

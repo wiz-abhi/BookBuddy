@@ -25,6 +25,7 @@ const AiBookCompanionOutputSchema = z.object({
   mainResponse: z.string().describe("The main, detailed, and human-like response to the user's query about the specific book."),
   followUpQuestions: z.array(z.string()).describe("A list of three interesting follow-up questions the user might want to ask based on the main response."),
   pageReference: z.string().optional().describe("A page number or chapter reference from the book that is relevant to the answer, if applicable."),
+  quote: z.string().optional().describe("A direct, exact quote from the book that supports the main response or answers the user's query."),
 });
 export type AiBookCompanionOutput = z.infer<typeof AiBookCompanionOutputSchema>;
 
@@ -44,7 +45,7 @@ const prompt = ai.definePrompt({
 
 Your goal is to provide responses that are not just accurate but also engaging, detailed, and human-like, as if you're discussing the book with a friend. Use a warm and approachable tone.
 
-When responding to the user, you must use the following structured format.
+**Crucially, if the user's question can be supported by a direct quote from the book, you MUST provide one in the 'quote' field. This makes your answers more credible and immersive. Also provide a 'pageReference' if you can find one for the quote.**
 
 Here is the context for your response:
 1.  **RAG Context:** Use your knowledge of the book with ID {{{bookId}}} to answer the user's questions. You can reference specific details, characters, plot points, and themes.
@@ -61,7 +62,7 @@ Here is the context for your response:
 Based on this context, please respond to the user's latest query:
 **User Query:** {{{query}}}
 
-Please formulate a comprehensive response that includes a main answer, suggests some follow-up questions, and optionally provides a page or chapter reference.
+Please formulate a comprehensive response that includes a main answer, suggests some follow-up questions, and provides a relevant quote with a page or chapter reference where applicable.
 `,
 });
 
