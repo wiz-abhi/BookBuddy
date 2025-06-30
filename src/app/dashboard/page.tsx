@@ -38,48 +38,61 @@ export default function DashboardPage() {
     return () => unsubscribeAuth();
   }, []);
 
+  // Effect to fetch the list of chats (without messages)
   useEffect(() => {
-    if (user) {
-      setIsLoading(true);
-      const chatsRef = collection(db, 'users', user.uid, 'chats');
-      const q = query(chatsRef, orderBy('createdAt', 'desc'));
+    if (!user) return;
 
-      const unsubscribeFirestore = onSnapshot(q, async (querySnapshot) => {
-        if (querySnapshot.empty) {
-          await handleNewChat(user.uid);
-          setIsLoading(false);
-          return;
-        }
+    setIsLoading(true);
+    const chatsRef = collection(db, 'users', user.uid, 'chats');
+    const q = query(chatsRef, orderBy('createdAt', 'desc'));
 
-        const fetchedChatsPromises = querySnapshot.docs.map(async (chatDoc) => {
-          const chatData = chatDoc.data();
-          const messagesRef = collection(db, 'users', user.uid, 'chats', chatDoc.id, 'messages');
-          const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
-          const messagesSnapshot = await getDocs(messagesQuery);
-          const messages = messagesSnapshot.docs.map(doc => doc.data() as ChatMessage);
-          
-          return {
-            id: chatDoc.id,
-            ...chatData,
-            messages,
-          } as Chat;
-        });
-
-        const fetchedChats = await Promise.all(fetchedChatsPromises);
-        
-        setChats(fetchedChats);
-        if (fetchedChats.length > 0 && !activeChatId && !querySnapshot.metadata.hasPendingWrites) {
-          setActiveChatId(fetchedChats[0].id);
-        }
+    const unsubscribeFirestore = onSnapshot(q, async (querySnapshot) => {
+      if (querySnapshot.empty && user) {
+        await handleNewChat(user.uid);
         setIsLoading(false);
-      }, (error) => {
-        console.error("Error fetching chats: ", error);
-        setIsLoading(false);
-      });
+        return;
+      }
 
-      return () => unsubscribeFirestore();
-    }
+      const fetchedChats = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        messages: [], // Messages are loaded by the next effect
+      })) as Chat[];
+      
+      setChats(fetchedChats);
+
+      if (!activeChatId && fetchedChats.length > 0) {
+        setActiveChatId(fetchedChats[0].id);
+      }
+      
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error fetching chats: ", error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribeFirestore();
   }, [user]);
+
+  // Effect to fetch messages for the active chat
+  useEffect(() => {
+    if (!user || !activeChatId) return;
+
+    const messagesRef = collection(db, 'users', user.uid, 'chats', activeChatId, 'messages');
+    const q = query(messagesRef, orderBy('timestamp', 'asc'));
+
+    const unsubscribeMessages = onSnapshot(q, (messagesSnapshot) => {
+      const messages = messagesSnapshot.docs.map(doc => doc.data() as ChatMessage);
+      setChats(prevChats =>
+        prevChats.map(chat =>
+          chat.id === activeChatId ? { ...chat, messages } : chat
+        )
+      );
+    });
+
+    return () => unsubscribeMessages();
+  }, [user, activeChatId]);
+
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
 
@@ -113,22 +126,28 @@ export default function DashboardPage() {
   };
 
   const handleSendMessage = async (content: string) => {
-    if (!activeChatId || !activeChat || !user) return;
+    if (!activeChatId || !user) return;
 
-    const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
     const messagesRef = collection(db, 'users', user.uid, 'chats', activeChatId, 'messages');
+    const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
     await addDoc(messagesRef, userMessage);
 
-    const isNewChat = activeChat.messages.length <= 1;
-    if (isNewChat) {
+    // Fetch the full, updated message history to ensure the AI has the latest context
+    const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
+    const messagesSnapshot = await getDocs(messagesQuery);
+    const allMessages = messagesSnapshot.docs.map(doc => doc.data() as ChatMessage);
+
+    // If it's the first user message in a "New Chat", update the chat title
+    if (allMessages.length <= 2 && activeChat?.title === 'New Chat') {
         const newTitle = content.length > 30 ? content.substring(0, 27) + '...' : content;
         const chatDocRef = doc(db, 'users', user.uid, 'chats', activeChatId);
         await setDoc(chatDocRef, { title: newTitle }, { merge: true });
     }
     
     try {
-      const chatHistory = [...activeChat.messages, {role: 'user', content}].map(msg => ({ role: msg.role, content: msg.content }));
+      const chatHistory = allMessages.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content }));
       
+      // The last message is the current user query, so we exclude it from the history
       const result = await mainChat({
         query: content,
         chatHistory: chatHistory.slice(0, -1),
@@ -138,6 +157,7 @@ export default function DashboardPage() {
       await addDoc(messagesRef, assistantMessage);
 
     } catch (error) {
+      console.error("Error calling mainChat flow:", error);
       const errorMessage: ChatMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.', timestamp: serverTimestamp() };
       await addDoc(messagesRef, errorMessage);
     }
@@ -147,11 +167,13 @@ export default function DashboardPage() {
     if (!chatToDelete || !user) return;
 
     try {
+      // Delete all messages in the chat's subcollection first
       const messagesRef = collection(db, 'users', user.uid, 'chats', chatToDelete, 'messages');
       const messagesSnapshot = await getDocs(messagesRef);
       const deletePromises = messagesSnapshot.docs.map((doc) => deleteDoc(doc.ref));
       await Promise.all(deletePromises);
 
+      // Delete the chat document itself
       const chatDocRef = doc(db, 'users', user.uid, 'chats', chatToDelete);
       await deleteDoc(chatDocRef);
       
@@ -161,8 +183,17 @@ export default function DashboardPage() {
       });
 
       if (activeChatId === chatToDelete) {
+        // Find the index of the deleted chat
+        const deletedIndex = chats.findIndex(c => c.id === chatToDelete);
+        // Reset active chat to the next one in the list, or the previous, or null if no chats left
         const remainingChats = chats.filter(c => c.id !== chatToDelete);
-        setActiveChatId(remainingChats.length > 0 ? remainingChats[0].id : null);
+        if (remainingChats.length > 0) {
+            const newActiveIndex = Math.max(0, deletedIndex -1);
+            setActiveChatId(remainingChats[newActiveIndex].id);
+        } else {
+            setActiveChatId(null);
+            handleNewChat(); // Create a new chat if none are left
+        }
       }
     } catch (error) {
       console.error("Error deleting chat: ", error);
