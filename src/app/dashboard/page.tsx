@@ -48,8 +48,10 @@ export default function DashboardPage() {
 
     const unsubscribeFirestore = onSnapshot(q, async (querySnapshot) => {
       if (querySnapshot.empty && user) {
+        // If the user has no chats, create one.
+        // This will trigger this listener again with the new chat.
         await handleNewChat(user.uid);
-        setIsLoading(false);
+        // Don't set loading to false here, wait for the re-trigger
         return;
       }
 
@@ -69,6 +71,11 @@ export default function DashboardPage() {
     }, (error) => {
       console.error("Error fetching chats: ", error);
       setIsLoading(false);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Could not fetch your chats. Please check your connection and refresh."
+      });
     });
 
     return () => unsubscribeFirestore();
@@ -88,6 +95,13 @@ export default function DashboardPage() {
           chat.id === activeChatId ? { ...chat, messages } : chat
         )
       );
+    }, (error) => {
+        console.error("Error fetching messages: ", error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Could not load messages for this chat."
+        });
     });
 
     return () => unsubscribeMessages();
@@ -104,6 +118,7 @@ export default function DashboardPage() {
   const handleNewChat = async (uid?: string) => {
     const userId = uid || user?.uid;
     if (!userId) return;
+
     const newChatData = {
       title: 'New Chat',
       userId: userId,
@@ -113,7 +128,7 @@ export default function DashboardPage() {
     const newChatRef = await addDoc(chatsRef, newChatData);
 
     const initialMessage = {
-      role: 'assistant',
+      role: 'assistant' as const,
       content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?",
       timestamp: serverTimestamp(),
     };
@@ -130,27 +145,29 @@ export default function DashboardPage() {
 
     const messagesRef = collection(db, 'users', user.uid, 'chats', activeChatId, 'messages');
     const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
+    
+    // Add user message to Firestore. Let the onSnapshot listener handle the local state update.
     await addDoc(messagesRef, userMessage);
 
-    // Fetch the full, updated message history to ensure the AI has the latest context
-    const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
-    const messagesSnapshot = await getDocs(messagesQuery);
-    const allMessages = messagesSnapshot.docs.map(doc => doc.data() as ChatMessage);
+    // Get the current list of messages from the state to build the history for the AI
+    const currentMessages = activeChat?.messages || [];
 
     // If it's the first user message in a "New Chat", update the chat title
-    if (allMessages.length <= 2 && activeChat?.title === 'New Chat') {
+    if (currentMessages.length <= 1 && activeChat?.title === 'New Chat') {
         const newTitle = content.length > 30 ? content.substring(0, 27) + '...' : content;
         const chatDocRef = doc(db, 'users', user.uid, 'chats', activeChatId);
         await setDoc(chatDocRef, { title: newTitle }, { merge: true });
     }
     
     try {
-      const chatHistory = allMessages.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content }));
+      // Build history from current messages + the new user message.
+      const historyForAI = [...currentMessages, userMessage]
+        .slice(0, -1) // Exclude the current user query from history
+        .map(msg => ({ role: msg.role, content: msg.content }));
       
-      // The last message is the current user query, so we exclude it from the history
       const result = await mainChat({
         query: content,
-        chatHistory: chatHistory.slice(0, -1),
+        chatHistory: historyForAI,
       });
 
       const assistantMessage: ChatMessage = { role: 'assistant', content: result.response, timestamp: serverTimestamp() };
@@ -183,18 +200,12 @@ export default function DashboardPage() {
         description: "The conversation has been removed."
       });
 
+      // After deleting, if the active chat was the one deleted,
+      // we need to select a new one. The onSnapshot listener for chats will update the UI.
       if (activeChatId === chatToDelete) {
-        // Find the index of the deleted chat
-        const deletedIndex = chats.findIndex(c => c.id === chatToDelete);
-        // Reset active chat to the next one in the list, or the previous, or null if no chats left
-        const remainingChats = chats.filter(c => c.id !== chatToDelete);
-        if (remainingChats.length > 0) {
-            const newActiveIndex = Math.max(0, deletedIndex -1);
-            setActiveChatId(remainingChats[newActiveIndex].id);
-        } else {
-            setActiveChatId(null);
-            handleNewChat(); // Create a new chat if none are left
-        }
+         // The useEffect for chats will handle setting a new active chat ID.
+         // We can just nullify it here to be safe.
+        setActiveChatId(null);
       }
     } catch (error) {
       console.error("Error deleting chat: ", error);
@@ -261,11 +272,11 @@ export default function DashboardPage() {
     <>
       {/* Desktop View */}
       <ResizablePanelGroup direction="horizontal" className="h-full w-full hidden md:flex">
-        <ResizablePanel defaultSize={25} minSize={15} collapsible={true} collapsedSize={4} className="flex flex-col bg-muted/30 border-r min-w-[220px]">
+        <ResizablePanel defaultSize={25} minSize={15} maxSize={40} collapsible={true} collapsedSize={0} className="flex flex-col bg-muted/30 border-r min-w-[220px]">
           <ChatList />
         </ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={75} minSize={40}>
+        <ResizablePanel defaultSize={75} minSize={30}>
           <div className="flex flex-1 flex-col h-full">
             {activeChat ? (
               <MainChat key={activeChat.id} messages={activeChat.messages} onSendMessage={handleSendMessage} />
