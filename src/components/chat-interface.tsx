@@ -54,8 +54,10 @@ export function ChatInterface({ bookId, bookTitle }: ChatInterfaceProps) {
 
       const assistantMessage: ChatMessage = { role: 'assistant', content: result.response };
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      const errorMessage: ChatMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
+    } catch (error: any) {
+      console.error("Error calling book companion flow:", error);
+      const detailedError = `Sorry, I encountered an error and could not get a response. Error: ${error.message ?? 'Unknown error'}`;
+      const errorMessage: ChatMessage = { role: 'assistant', content: detailedError };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);

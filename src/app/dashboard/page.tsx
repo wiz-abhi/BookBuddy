@@ -156,9 +156,10 @@ export default function DashboardPage() {
       const assistantMessage: ChatMessage = { role: 'assistant', content: result.response, timestamp: serverTimestamp() };
       await addDoc(messagesRef, assistantMessage);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error calling mainChat flow:", error);
-      const errorMessage: ChatMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.', timestamp: serverTimestamp() };
+      const detailedError = `Sorry, I encountered an error and could not get a response. Error: ${error.message ?? 'Unknown error'}`;
+      const errorMessage: ChatMessage = { role: 'assistant', content: detailedError, timestamp: serverTimestamp() };
       await addDoc(messagesRef, errorMessage);
     }
   };
