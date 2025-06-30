@@ -19,8 +19,12 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { indexBook } from '@/ai/flows/book-indexing';
 import { Loader2, PlusCircle, Upload } from 'lucide-react';
+import { auth, db } from '@/lib/firebase';
+import { addDoc, collection } from 'firebase/firestore';
 
 const formSchema = z.object({
+  title: z.string().min(1, { message: 'Title is required.' }),
+  author: z.string().min(1, { message: 'Author is required.' }),
   bookDataUri: z.string().refine(
     (val) => val.startsWith('data:application/pdf;base64,'),
     {
@@ -38,6 +42,8 @@ export function BookUploadDialog() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      title: '',
+      author: '',
       bookDataUri: '',
       fileName: '',
     },
@@ -64,13 +70,26 @@ export function BookUploadDialog() {
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    if (!auth.currentUser) {
+        toast({ variant: 'destructive', title: 'Not Authenticated', description: 'You must be logged in to upload a book.' });
+        return;
+    }
     setIsLoading(true);
     try {
       const result = await indexBook({ bookDataUri: values.bookDataUri });
       if (result.success) {
+        await addDoc(collection(db, 'books'), {
+            userId: auth.currentUser.uid,
+            title: values.title,
+            author: values.author,
+            fileName: values.fileName,
+            coverImage: `https://placehold.co/300x450?text=${encodeURIComponent(values.title)}`, // Placeholder cover
+            aiHint: 'custom book',
+        });
+
         toast({
           title: 'Upload Successful!',
-          description: `"${values.fileName}" has been indexed and added to your library.`,
+          description: `"${values.title}" has been indexed and added to your library.`,
         });
         setOpen(false);
         form.reset();
@@ -104,7 +123,21 @@ export function BookUploadDialog() {
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField control={form.control} name="title" render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Title</FormLabel>
+                    <FormControl><Input placeholder="The Great Gatsby" {...field} /></FormControl>
+                    <FormMessage />
+                </FormItem>
+            )} />
+             <FormField control={form.control} name="author" render={({ field }) => (
+                <FormItem>
+                    <FormLabel>Author</FormLabel>
+                    <FormControl><Input placeholder="F. Scott Fitzgerald" {...field} /></FormControl>
+                    <FormMessage />
+                </FormItem>
+            )} />
             <FormField
               control={form.control}
               name="bookDataUri"

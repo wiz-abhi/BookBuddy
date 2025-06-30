@@ -17,6 +17,10 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BookHeart } from 'lucide-react';
+import { auth, db } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { useToast } from '@/hooks/use-toast';
 
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -26,6 +30,7 @@ const formSchema = z.object({
 
 export function SignupForm() {
   const router = useRouter();
+  const { toast } = useToast();
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -35,10 +40,35 @@ export function SignupForm() {
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    // Mock signup logic
-    console.log(values);
-    router.push('/dashboard');
+  async function onSubmit(values: z.infer<typeof formSchema>) {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        values.email,
+        values.password
+      );
+      const user = userCredential.user;
+
+      await updateProfile(user, {
+        displayName: values.name,
+      });
+
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: values.name,
+        email: values.email,
+        photoURL: null,
+      });
+
+      router.push('/dashboard');
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Sign-up Failed',
+        description: error.message,
+      });
+      console.error('Signup error:', error);
+    }
   }
 
   return (
@@ -92,7 +122,9 @@ export function SignupForm() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full font-headline">Sign Up</Button>
+            <Button type="submit" className="w-full font-headline" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Signing up...' : 'Sign Up'}
+            </Button>
           </form>
         </Form>
         <div className="mt-4 text-center text-sm">

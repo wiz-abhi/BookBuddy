@@ -1,49 +1,68 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { MainChat } from '@/components/main-chat';
-import { mockChats } from '@/lib/data';
 import type { Chat, ChatMessage } from '@/lib/types';
 import { PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, getDocs, doc, setDoc } from 'firebase/firestore';
 
 export default function DashboardPage() {
-  const [chats, setChats] = useState<Chat[]>(mockChats);
+  const [user, setUser] = useState<User | null>(null);
+  const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load chats from localStorage on component mount
   useEffect(() => {
-    try {
-      const storedChats = window.localStorage.getItem('bookwise_chats');
-      if (storedChats) {
-        const parsedChats = JSON.parse(storedChats);
-        setChats(parsedChats);
-        if (parsedChats.length > 0) {
-          setActiveChatId(parsedChats[0].id);
-        }
-      } else {
-        // If no stored chats, initialize with mock data and set active chat
-        setActiveChatId(mockChats[0]?.id || null);
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
+        setChats([]);
+        setActiveChatId(null);
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to parse chats from localStorage", error);
-      // Fallback to mock chats is already done in useState initial value
-      setActiveChatId(mockChats[0]?.id || null);
-    }
-    setIsLoaded(true);
+    });
+    return () => unsubscribeAuth();
   }, []);
 
-  // Save chats to localStorage whenever they change, but only after initial load
   useEffect(() => {
-    if (isLoaded) {
-      window.localStorage.setItem('bookwise_chats', JSON.stringify(chats));
+    if (user) {
+      setIsLoading(true);
+      const chatsRef = collection(db, 'users', user.uid, 'chats');
+      const q = query(chatsRef, orderBy('createdAt', 'desc'));
+
+      const unsubscribeFirestore = onSnapshot(q, async (querySnapshot) => {
+        const fetchedChatsPromises = querySnapshot.docs.map(async (chatDoc) => {
+          const chatData = chatDoc.data();
+          const messagesRef = collection(db, 'users', user.uid, 'chats', chatDoc.id, 'messages');
+          const messagesQuery = query(messagesRef, orderBy('timestamp', 'asc'));
+          const messagesSnapshot = await getDocs(messagesQuery);
+          const messages = messagesSnapshot.docs.map(doc => doc.data() as ChatMessage);
+          
+          return {
+            id: chatDoc.id,
+            ...chatData,
+            messages,
+          } as Chat;
+        });
+
+        const fetchedChats = await Promise.all(fetchedChatsPromises);
+        
+        setChats(fetchedChats);
+        if (fetchedChats.length > 0 && !activeChatId) {
+          setActiveChatId(fetchedChats[0].id);
+        }
+        setIsLoading(false);
+      });
+
+      return () => unsubscribeFirestore();
     }
-  }, [chats, isLoaded]);
+  }, [user]);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
 
@@ -51,62 +70,61 @@ export default function DashboardPage() {
     setActiveChatId(chatId);
   };
 
-  const handleNewChat = () => {
-    const newChat: Chat = {
-      id: `chat_${Date.now()}`,
-      title: `New Chat`,
-      messages: [{ role: 'assistant', content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?" }],
+  const handleNewChat = async () => {
+    if (!user) return;
+    const newChatData = {
+      title: 'New Chat',
+      userId: user.uid,
+      createdAt: serverTimestamp(),
     };
-    setChats([newChat, ...chats]);
-    setActiveChatId(newChat.id);
+    const chatsRef = collection(db, 'users', user.uid, 'chats');
+    const newChatRef = await addDoc(chatsRef, newChatData);
+
+    const initialMessage = {
+      role: 'assistant',
+      content: "Hello! I'm your AI companion. I have knowledge of all the books in your library. How can I help you today?",
+      timestamp: serverTimestamp(),
+    };
+    const messagesRef = collection(db, 'users', user.uid, 'chats', newChatRef.id, 'messages');
+    await addDoc(messagesRef, initialMessage);
+
+    setActiveChatId(newChatRef.id);
   };
 
   const handleSendMessage = async (content: string) => {
-    if (!activeChatId || !activeChat) return;
+    if (!activeChatId || !activeChat || !user) return;
 
-    const userMessage: ChatMessage = { role: 'user', content };
+    const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
+    const messagesRef = collection(db, 'users', user.uid, 'chats', activeChatId, 'messages');
+    await addDoc(messagesRef, userMessage);
 
-    // Create a new title for new chats on first user message
-    const isNewChat = activeChat.messages.length === 1 && activeChat.messages[0].role === 'assistant';
-    const newTitle = isNewChat ? (content.length > 30 ? content.substring(0, 27) + '...' : content) : activeChat.title;
-
-    const updatedMessages = [...activeChat.messages, userMessage];
-    const updatedChat = { ...activeChat, messages: updatedMessages, title: newTitle };
-
-    setChats(chats.map((chat) => (chat.id === activeChatId ? updatedChat : chat)));
-
+    const isNewChat = activeChat.messages.length <= 1;
+    if (isNewChat) {
+        const newTitle = content.length > 30 ? content.substring(0, 27) + '...' : content;
+        const chatDocRef = doc(db, 'users', user.uid, 'chats', activeChatId);
+        await setDoc(chatDocRef, { title: newTitle }, { merge: true });
+    }
+    
     try {
-      const chatHistory = updatedMessages.map(msg => ({ role: msg.role, content: msg.content }));
+      const chatHistory = [...activeChat.messages, {role: 'user', content}].map(msg => ({ role: msg.role, content: msg.content }));
       
       const result = await mainChat({
         query: content,
         chatHistory: chatHistory.slice(0, -1),
       });
 
-      const assistantMessage: ChatMessage = { role: 'assistant', content: result.response };
+      const assistantMessage: ChatMessage = { role: 'assistant', content: result.response, timestamp: serverTimestamp() };
+      await addDoc(messagesRef, assistantMessage);
 
-      setChats(prevChats => {
-        return prevChats.map(chat => {
-          if (chat.id === activeChatId) {
-            // Ensure the title is also updated in the final state
-            const finalChat = { ...chat, messages: [...updatedMessages, assistantMessage], title: newTitle };
-            return finalChat;
-          }
-          return chat;
-        });
-      });
     } catch (error) {
-      const errorMessage: ChatMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
-       setChats(prevChats => {
-        return prevChats.map(chat => {
-          if (chat.id === activeChatId) {
-            return { ...chat, messages: [...updatedMessages, errorMessage] };
-          }
-          return chat;
-        });
-      });
+      const errorMessage: ChatMessage = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.', timestamp: serverTimestamp() };
+      await addDoc(messagesRef, errorMessage);
     }
   };
+
+  if (isLoading) {
+    return <div className="flex h-screen w-full items-center justify-center">Loading chats...</div>;
+  }
 
   return (
     <div className="flex h-full w-full">
@@ -143,8 +161,12 @@ export default function DashboardPage() {
             onSendMessage={handleSendMessage}
           />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground">
+          <div className="flex flex-1 items-center justify-center text-muted-foreground flex-col gap-4">
             <p>Select a chat or start a new one.</p>
+            <Button onClick={handleNewChat}>
+              <PlusCircle className="mr-2 h-4 w-4" />
+              New Chat
+            </Button>
           </div>
         )}
       </div>

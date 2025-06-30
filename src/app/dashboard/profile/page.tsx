@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,14 +8,47 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, User, Upload } from 'lucide-react';
+import { auth, db, storage } from '@/lib/firebase';
+import { onAuthStateChanged, updateProfile } from 'firebase/auth';
+import type { User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadString, getDownloadURL } from 'firebase/storage';
+import { useRouter } from 'next/navigation';
+import type { User as AppUser } from '@/lib/types';
 
 export default function ProfilePage() {
-  const [name, setName] = useState('Jane Doe');
-  const [email, setEmail] = useState('user@example.com');
-  const [profileImage, setProfileImage] = useState('https://placehold.co/128x128.png');
-  const [isSaving, setIsSaving] = useState(false);
+  const router = useRouter();
   const { toast } = useToast();
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [newImage, setNewImage] = useState<{ file: File; dataUri: string } | null>(null);
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          const userData = userDoc.data() as AppUser;
+          setName(userData.name || '');
+          setEmail(userData.email || '');
+          setProfileImage(userData.photoURL);
+        }
+      } else {
+        router.push('/login');
+      }
+      setIsLoading(false);
+    });
+    return () => unsubscribe();
+  }, [router]);
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -24,22 +56,60 @@ export default function ProfilePage() {
       const reader = new FileReader();
       reader.onload = (loadEvent) => {
         const dataUri = loadEvent.target?.result as string;
-        setProfileImage(dataUri);
+        setNewImage({ file, dataUri });
+        setProfileImage(dataUri); // for preview
       };
       reader.readAsDataURL(file);
     }
   };
 
   const handleSave = async () => {
+    if (!user) return;
     setIsSaving(true);
-    // Simulate a save operation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsSaving(false);
-    toast({
-      title: 'Profile Updated',
-      description: 'Your changes have been saved successfully.',
-    });
+    
+    try {
+      let photoURL = profileImage;
+
+      // If a new image was selected, upload it to storage
+      if (newImage) {
+        const filePath = `profile-images/${user.uid}/${newImage.file.name}`;
+        const storageRef = ref(storage, filePath);
+        await uploadString(storageRef, newImage.dataUri, 'data_url');
+        photoURL = await getDownloadURL(storageRef);
+      }
+
+      // Update Firebase Auth profile
+      await updateProfile(user, {
+        displayName: name,
+        photoURL: photoURL,
+      });
+
+      // Update Firestore document
+      const userDocRef = doc(db, 'users', user.uid);
+      await updateDoc(userDocRef, {
+        name: name,
+        photoURL: photoURL,
+      });
+      
+      setNewImage(null);
+      toast({
+        title: 'Profile Updated',
+        description: 'Your changes have been saved successfully.',
+      });
+    } catch (error: any) {
+        toast({
+            variant: 'destructive',
+            title: 'Update Failed',
+            description: error.message,
+        });
+    } finally {
+        setIsSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return <div className="flex flex-1 items-center justify-center">Loading profile...</div>;
+  }
 
   return (
     <div className="flex flex-1 items-start justify-center p-4 sm:p-6 md:p-8">
@@ -51,7 +121,7 @@ export default function ProfilePage() {
         <CardContent className="space-y-8">
           <div className="flex items-center gap-6">
             <Avatar className="h-24 w-24">
-              <AvatarImage src={profileImage} alt="User Profile" data-ai-hint="person portrait" />
+              <AvatarImage src={profileImage || 'https://placehold.co/128x128.png'} alt="User Profile" data-ai-hint="person portrait" />
               <AvatarFallback>
                 <User className="h-12 w-12" />
               </AvatarFallback>

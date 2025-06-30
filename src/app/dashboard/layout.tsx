@@ -1,7 +1,10 @@
+'use client';
 
 import { BookOpenCheck, Library, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -18,8 +21,51 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import type { User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import type { User as AppUser } from '@/lib/types';
+
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [profile, setProfile] = useState<AppUser | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const unsubDoc = onSnapshot(userDocRef, (doc) => {
+           if (doc.exists()) {
+            setProfile(doc.data() as AppUser);
+          }
+        });
+        setLoading(false);
+        return () => unsubDoc();
+      } else {
+        setUser(null);
+        setProfile(null);
+        router.push('/login');
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [router]);
+
+  const handleLogout = async () => {
+    await signOut(auth);
+    router.push('/');
+  };
+
+  if (loading) {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  }
+
   return (
     <div className="flex h-screen w-full flex-col">
       <header className="sticky top-0 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6 z-50">
@@ -55,17 +101,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar>
-                    <AvatarImage src="https://placehold.co/40x40.png" alt="User" data-ai-hint="user avatar" />
-                    <AvatarFallback>U</AvatarFallback>
+                    <AvatarImage src={profile?.photoURL || 'https://placehold.co/40x40.png'} alt={profile?.name || 'User'} data-ai-hint="user avatar" />
+                    <AvatarFallback>{profile?.name?.charAt(0).toUpperCase() || 'U'}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">Jane Doe</p>
+                  <p className="text-sm font-medium leading-none">{profile?.name}</p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    user@example.com
+                    {profile?.email}
                   </p>
                 </div>
               </DropdownMenuLabel>
@@ -77,11 +123,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Log out</span>
-                </Link>
+              <DropdownMenuItem onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
