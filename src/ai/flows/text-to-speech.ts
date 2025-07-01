@@ -11,10 +11,10 @@ import { googleAI } from '@genkit-ai/googleai';
 import { z } from 'genkit';
 import wav from 'wav';
 
-export const TextToSpeechInputSchema = z.string();
+const TextToSpeechInputSchema = z.string();
 export type TextToSpeechInput = z.infer<typeof TextToSpeechInputSchema>;
 
-export const TextToSpeechOutputSchema = z.object({
+const TextToSpeechOutputSchema = z.object({
     audioSrc: z.string().describe("A base64-encoded WAV audio file as a data URI.")
 });
 export type TextToSpeechOutput = z.infer<typeof TextToSpeechOutputSchema>;
