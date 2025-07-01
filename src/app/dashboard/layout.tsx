@@ -1,6 +1,6 @@
 'use client';
 
-import { BookOpenCheck, Library, LogOut, User, Database, CheckCircle, XCircle, Cpu } from 'lucide-react';
+import { BookOpenCheck, Library, LogOut, User, MessageCircle, Mic, Cpu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,11 +24,13 @@ import {
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import type { User as AppUser } from '@/lib/types';
-import { useToast } from "@/hooks/use-toast";
 import { SettingsProvider, useSettings } from '@/context/settings-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 function ModelSelector() {
     const { model, setModel, availableModels } = useSettings();
@@ -50,13 +52,49 @@ function ModelSelector() {
     );
 }
 
+function ConversationModeSelector() {
+    const { conversationMode, setConversationMode } = useSettings();
+
+    return (
+        <RadioGroup
+            value={conversationMode}
+            onValueChange={(value) => setConversationMode(value as 'chat' | 'voice')}
+            className="flex items-center gap-1 rounded-lg bg-muted p-1"
+        >
+            <RadioGroupItem value="chat" id="chat-mode" className="peer sr-only" />
+            <Label
+                htmlFor="chat-mode"
+                className={cn(
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium cursor-pointer transition-colors",
+                    "peer-data-[state=unchecked]:hover:bg-accent/50",
+                    "peer-data-[state=checked]:bg-background peer-data-[state=checked]:text-foreground peer-data-[state=checked]:shadow-sm"
+                )}
+            >
+                <MessageCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Chat</span>
+            </Label>
+            <RadioGroupItem value="voice" id="voice-mode" className="peer sr-only" />
+            <Label
+                htmlFor="voice-mode"
+                className={cn(
+                    "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs sm:text-sm font-medium cursor-pointer transition-colors",
+                    "peer-data-[state=unchecked]:hover:bg-accent/50",
+                    "peer-data-[state=checked]:bg-background peer-data-[state=checked]:text-foreground peer-data-[state=checked]:shadow-sm"
+                )}
+            >
+                <Mic className="h-4 w-4" />
+                <span className="hidden sm:inline">Voice</span>
+            </Label>
+        </RadioGroup>
+    );
+}
+
 
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -86,34 +124,6 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     router.push('/');
   };
 
-  const handleConnectionCheck = async () => {
-    if (!user) {
-        toast({
-            variant: 'destructive',
-            title: 'Not Authenticated',
-            description: 'You must be logged in to check the database connection.',
-        });
-        return;
-    }
-    
-    try {
-        const userDocRef = doc(db, 'users', user.uid);
-        await getDoc(userDocRef);
-        toast({
-            title: 'Success',
-            description: 'Database connection is healthy.',
-            action: <CheckCircle className="text-green-500" />,
-        });
-    } catch (error: any) {
-        toast({
-            variant: 'destructive',
-            title: 'Connection Failed',
-            description: `Could not connect to the database. ${error.message}`,
-            action: <XCircle className="text-white" />,
-        });
-    }
-  };
-
   if (loading) {
     return <div className="flex h-screen items-center justify-center">Loading...</div>;
   }
@@ -138,10 +148,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             <div className="hidden sm:flex">
               <ModelSelector />
             </div>
-            <Button variant="outline" onClick={handleConnectionCheck} size="sm" className="hidden sm:flex">
-              <Database className="mr-2 h-4 w-4" />
-              Check DB
-            </Button>
+             <ConversationModeSelector />
             <Sheet>
               <SheetTrigger asChild>
                 <Button>

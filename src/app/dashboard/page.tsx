@@ -7,6 +7,7 @@ import type { ChatMessage, Chat, Book } from '@/lib/types';
 import { PanelLeft, Loader2, Plus, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
+import { textToSpeech } from '@/ai/flows/text-to-speech';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ResizableHandle,
@@ -54,7 +55,7 @@ export default function DashboardPage() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
   const { toast } = useToast();
-  const { model } = useSettings();
+  const { model, conversationMode } = useSettings();
   
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
@@ -300,7 +301,23 @@ export default function DashboardPage() {
           formattedResponse += `\n\n**Did you know?**\n${result.didYouKnow}`;
       }
       
-      const assistantMessage: ChatMessage = { role: 'assistant', content: formattedResponse, timestamp: serverTimestamp() };
+      const assistantMessage: ChatMessage = { 
+        role: 'assistant', 
+        content: formattedResponse, 
+        timestamp: serverTimestamp(),
+        audioSrc: null,
+      };
+
+      if (conversationMode === 'voice') {
+        try {
+          const { audioSrc } = await textToSpeech(result.mainResponse);
+          assistantMessage.audioSrc = audioSrc;
+        } catch (ttsError) {
+          console.error("Error generating speech:", ttsError);
+          assistantMessage.content += "\n\n(Sorry, I couldn't generate the audio for this response.)";
+        }
+      }
+
       await addDoc(messagesRef, assistantMessage);
 
     } catch (error: any) {
