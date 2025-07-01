@@ -75,7 +75,10 @@ const aiBookCompanionFlow = ai.defineFlow(
     outputSchema: AiBookCompanionOutputSchema,
   },
   async (input) => {
-    const modelId = input.model || 'gemini-1.5-flash-latest';
+    let modelId = input.model || 'gemini-1.5-flash-latest';
+    if (modelId.startsWith('googleai/')) {
+      modelId = modelId.replace('googleai/', '');
+    }
     const {output} = await prompt(input, { model: googleAI.model(modelId) });
     return output!;
   }
