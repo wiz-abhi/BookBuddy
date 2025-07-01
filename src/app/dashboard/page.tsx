@@ -60,6 +60,7 @@ export default function DashboardPage() {
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
   const [newChatTitle, setNewChatTitle] = useState("");
+  const [audioSrcToPlay, setAudioSrcToPlay] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -253,12 +254,13 @@ export default function DashboardPage() {
       }));
 
       const libraryForAI = books.map(({ title, author }) => ({ title, author }));
+      const modelToUse = model ? `googleai/${model}` : 'googleai/gemini-1.5-flash-latest';
 
       const result = await mainChat({
         query: content,
         chatHistory: historyForAI,
         library: libraryForAI,
-        model,
+        model: modelToUse,
       });
 
       const activeChat = chats.find(c => c.id === activeChatId);
@@ -305,20 +307,23 @@ export default function DashboardPage() {
         role: 'assistant', 
         content: formattedResponse, 
         timestamp: serverTimestamp(),
-        audioSrc: null,
       };
+      
+      await addDoc(messagesRef, assistantMessage);
 
       if (conversationMode === 'voice') {
         try {
           const { audioSrc } = await textToSpeech(result.mainResponse);
-          assistantMessage.audioSrc = audioSrc;
+          setAudioSrcToPlay(audioSrc);
         } catch (ttsError) {
           console.error("Error generating speech:", ttsError);
-          assistantMessage.content += "\n\n(Sorry, I couldn't generate the audio for this response.)";
+          toast({
+            variant: 'destructive',
+            title: 'Audio Generation Failed',
+            description: 'Could not generate audio for the response.',
+          });
         }
       }
-
-      await addDoc(messagesRef, assistantMessage);
 
     } catch (error: any) {
       console.error("Error calling mainChat flow or saving messages:", error);
@@ -442,7 +447,13 @@ export default function DashboardPage() {
           <ResizablePanel defaultSize={75} minSize={30}>
             <div className="flex flex-1 flex-col h-full">
               {activeChatId ? (
-                  <MainChat messages={messages} onSendMessage={handleSendMessage} isSending={isSending} />
+                  <MainChat 
+                    messages={messages} 
+                    onSendMessage={handleSendMessage} 
+                    isSending={isSending} 
+                    audioToPlay={audioSrcToPlay}
+                    onAudioPlayed={() => setAudioSrcToPlay(null)}
+                  />
               ) : (
                   <div className="flex flex-col h-full items-center justify-center text-center p-4">
                       <h2 className="text-xl font-headline">Welcome to BookWise</h2>

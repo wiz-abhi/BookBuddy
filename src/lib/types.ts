@@ -18,7 +18,6 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp?: any; // Add timestamp for ordering
-  audioSrc?: string | null;
 }
 
 export interface Chat {
