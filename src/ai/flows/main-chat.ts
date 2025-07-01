@@ -11,7 +11,6 @@
 import {ai} from '@/ai/genkit';
 import { googleAI } from '@genkit-ai/googleai';
 import {z} from 'genkit';
-import { textToSpeech } from './text-to-speech';
 
 const MainChatInputSchema = z.object({
   model: z.string().optional().describe('The AI model to use for the response.'),
@@ -33,7 +32,6 @@ const MainChatOutputSchema = z.object({
   followUpQuestions: z.array(z.string()).describe("A list of three interesting follow-up questions the user might want to ask based on the main response. This helps guide the conversation."),
   didYouKnow: z.string().optional().describe("An optional, interesting fact or a piece of trivia related to the user's query or the books in the library."),
   relevantBookTitle: z.string().optional().describe("The title of the book from the user's library that is most relevant to the current query. If the query is general and not about a specific book, leave this field empty."),
-  audioSrc: z.string().optional().describe("A base64-encoded WAV audio data URI of the main response, if in voice mode."),
 });
 export type MainChatOutput = z.infer<typeof MainChatOutputSchema>;
 
@@ -42,7 +40,7 @@ export async function mainChat(input: MainChatInput): Promise<MainChatOutput> {
 }
 
 const PromptInputSchema = MainChatInputSchema.omit({ conversationMode: true });
-const PromptOutputSchema = MainChatOutputSchema.omit({ audioSrc: true });
+const PromptOutputSchema = MainChatOutputSchema;
 
 
 const prompt = ai.definePrompt({
@@ -97,23 +95,8 @@ const mainChatFlow = ai.defineFlow(
     if (modelId.startsWith('googleai/')) {
       modelId = modelId.replace('googleai/', '');
     }
-    const {output: textOutput} = await prompt(input, { model: googleAI.model(modelId) });
+    const {output} = await prompt(input, { model: googleAI.model(modelId) });
 
-    if (!textOutput) {
-        throw new Error('Failed to get a text response from the main chat prompt.');
-    }
-
-    if (input.conversationMode === 'voice' && textOutput.mainResponse) {
-        try {
-            const ttsResult = await textToSpeech(textOutput.mainResponse);
-            return { ...textOutput, audioSrc: ttsResult.audioSrc };
-        } catch (error) {
-            console.error('TTS generation failed within mainChatFlow:', error);
-            // Fail gracefully, return the text response without audio.
-            return { ...textOutput, audioSrc: undefined };
-        }
-    }
-
-    return { ...textOutput, audioSrc: undefined };
+    return output!;
   }
 );

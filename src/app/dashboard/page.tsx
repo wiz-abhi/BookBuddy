@@ -7,6 +7,7 @@ import type { ChatMessage, Chat, Book } from '@/lib/types';
 import { PanelLeft, Loader2, Plus, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
+import { textToSpeech } from '@/ai/flows/text-to-speech';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ResizableHandle,
@@ -240,7 +241,6 @@ export default function DashboardPage() {
     const userMessage: ChatMessage = { role: 'user', content, timestamp: serverTimestamp() };
     const messagesRef = collection(db, 'chats', activeChatId, 'messages');
     
-    // Use a temporary state for the AI history to avoid race conditions with Firestore
     const tempMessages = [...messages, {role: 'user', content}];
     setIsSending(true);
 
@@ -311,8 +311,14 @@ export default function DashboardPage() {
       
       await addDoc(messagesRef, assistantMessage);
 
-      if (conversationMode === 'voice' && result.audioSrc) {
-        setAudioSrcToPlay(result.audioSrc);
+      if (conversationMode === 'voice' && result.mainResponse) {
+        try {
+          const ttsResult = await textToSpeech(result.mainResponse);
+          setAudioSrcToPlay(ttsResult.audioSrc);
+        } catch (error) {
+          console.error("Text-to-speech failed:", error);
+          // Fail gracefully as the user already has the text response
+        }
       }
 
     } catch (error: any) {
