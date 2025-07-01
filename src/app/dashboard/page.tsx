@@ -7,7 +7,6 @@ import type { ChatMessage, Chat, Book } from '@/lib/types';
 import { PanelLeft, Loader2, Plus, Trash2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mainChat } from '@/ai/flows/main-chat';
-import { textToSpeech } from '@/ai/flows/text-to-speech';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ResizableHandle,
@@ -261,6 +260,7 @@ export default function DashboardPage() {
         chatHistory: historyForAI,
         library: libraryForAI,
         model: modelToUse,
+        conversationMode: conversationMode,
       });
 
       const activeChat = chats.find(c => c.id === activeChatId);
@@ -311,18 +311,8 @@ export default function DashboardPage() {
       
       await addDoc(messagesRef, assistantMessage);
 
-      if (conversationMode === 'voice') {
-        try {
-          const { audioSrc } = await textToSpeech(result.mainResponse);
-          setAudioSrcToPlay(audioSrc);
-        } catch (ttsError) {
-          console.error("Error generating speech:", ttsError);
-          toast({
-            variant: 'destructive',
-            title: 'Audio Generation Failed',
-            description: 'Could not generate audio for the response.',
-          });
-        }
+      if (conversationMode === 'voice' && result.audioSrc) {
+        setAudioSrcToPlay(result.audioSrc);
       }
 
     } catch (error: any) {
