@@ -9,6 +9,7 @@
  */
 
 import {ai} from '@/ai/genkit';
+import { googleAI } from '@genkit-ai/googleai';
 import {z} from 'genkit';
 
 const IndexBookInputSchema = z.object({
@@ -52,8 +53,8 @@ const indexBookFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const modelToUse = input.model ? `googleai/${input.model}` : 'googleai/gemini-1.5-flash-latest';
-      const {output} = await prompt(input, { model: modelToUse });
+      const modelId = input.model || 'gemini-1.5-flash-latest';
+      const {output} = await prompt(input, { model: googleAI.model(modelId) });
       // Implement RAG indexing logic here, for now just returning prompt output
       // This might involve calling external services, chunking the book data, etc.
       return output!;

@@ -9,6 +9,7 @@
  */
 
 import {ai} from '@/ai/genkit';
+import { googleAI } from '@genkit-ai/googleai';
 import {z} from 'genkit';
 
 const AiBookCompanionInputSchema = z.object({
@@ -74,8 +75,8 @@ const aiBookCompanionFlow = ai.defineFlow(
     outputSchema: AiBookCompanionOutputSchema,
   },
   async (input) => {
-    const modelToUse = input.model ? `googleai/${input.model}` : 'googleai/gemini-1.5-flash-latest';
-    const {output} = await prompt(input, { model: modelToUse });
+    const modelId = input.model || 'gemini-1.5-flash-latest';
+    const {output} = await prompt(input, { model: googleAI.model(modelId) });
     return output!;
   }
 );
