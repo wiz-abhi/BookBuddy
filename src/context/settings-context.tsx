@@ -10,7 +10,7 @@ type SettingsContextType = {
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
-export const availableModels = ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest'];
+export const availableModels = ['gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-2.0-flash'];
 const STORAGE_KEY = 'bookwise-ai-model';
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
