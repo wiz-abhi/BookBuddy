@@ -26,6 +26,7 @@ export function MainChat({ messages, onSendMessage, isSending, mobileHeader }: M
   const { conversationMode } = useSettings();
   const { isListening, transcript, startListening, stopListening, setTranscript } = useSpeechRecognition();
   const isAssistantResponding = isSending;
+  const wasSendingRef = useRef(isSending);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -42,6 +43,31 @@ export function MainChat({ messages, onSendMessage, isSending, mobileHeader }: M
       setTranscript('');
     }
   }, [transcript, isListening, onSendMessage, setTranscript]);
+
+  // Effect to auto-play audio for new messages
+  useEffect(() => {
+    // Check for the specific transition: we *were* sending, and now we are *not*.
+    // This indicates a response has just been received.
+    if (wasSendingRef.current && !isSending && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      const lastMessageIndex = messages.length - 1;
+
+      // Check if this newly received message is from the assistant and has audio.
+      if (lastMessage.role === 'assistant' && lastMessage.audioSrc) {
+        const audioElement = document.getElementById(`audio-${lastMessageIndex}`) as HTMLAudioElement;
+        if (audioElement) {
+          audioElement.play().catch(error => {
+            // Browsers often block autoplay without user interaction.
+            // This is expected and okay. The user can still click play.
+            console.warn("Audio autoplay was attempted but may have been blocked by the browser.", error);
+          });
+        }
+      }
+    }
+
+    // After the logic runs, update the ref to the current state for the next render.
+    wasSendingRef.current = isSending;
+  }, [isSending, messages]);
 
   const handleTextInputSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +122,7 @@ export function MainChat({ messages, onSendMessage, isSending, mobileHeader }: M
                         >
                             <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                             {message.role === 'assistant' && message.audioSrc && (
-                                <audio src={message.audioSrc} autoPlay controls className="mt-2 w-full max-w-xs md:max-w-md lg:max-w-2xl" />
+                                <audio id={`audio-${index}`} src={message.audioSrc} controls className="mt-2 w-full max-w-xs md:max-w-md lg:max-w-2xl" />
                             )}
                         </div>
                         {message.role === 'user' && (
