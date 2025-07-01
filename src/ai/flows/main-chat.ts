@@ -85,7 +85,8 @@ const mainChatFlow = ai.defineFlow(
     outputSchema: MainChatOutputSchema,
   },
   async (input) => {
-    const {output} = await prompt(input, { model: input.model });
+    const modelToUse = input.model ? `googleai/${input.model}` : undefined;
+    const {output} = await prompt(input, { model: modelToUse });
     return output!;
   }
 );

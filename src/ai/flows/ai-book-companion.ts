@@ -74,7 +74,8 @@ const aiBookCompanionFlow = ai.defineFlow(
     outputSchema: AiBookCompanionOutputSchema,
   },
   async (input) => {
-    const {output} = await prompt(input, { model: input.model });
+    const modelToUse = input.model ? `googleai/${input.model}` : undefined;
+    const {output} = await prompt(input, { model: modelToUse });
     return output!;
   }
 );
