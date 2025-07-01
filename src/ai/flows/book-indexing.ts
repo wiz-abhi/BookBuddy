@@ -52,7 +52,7 @@ const indexBookFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      const modelToUse = input.model ? `googleai/${input.model}` : undefined;
+      const modelToUse = input.model ? `googleai/${input.model}` : 'googleai/gemini-1.5-flash-latest';
       const {output} = await prompt(input, { model: modelToUse });
       // Implement RAG indexing logic here, for now just returning prompt output
       // This might involve calling external services, chunking the book data, etc.
