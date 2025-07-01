@@ -39,6 +39,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from '@/hooks/use-toast';
+import { useSettings } from '@/context/settings-context';
 
 export default function DashboardPage() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -53,6 +54,7 @@ export default function DashboardPage() {
   const [isPanelCollapsed, setIsPanelCollapsed] = useState(false);
   const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
   const { toast } = useToast();
+  const { model } = useSettings();
   
   const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false);
   const [chatToRename, setChatToRename] = useState<Chat | null>(null);
@@ -255,6 +257,7 @@ export default function DashboardPage() {
         query: content,
         chatHistory: historyForAI,
         library: libraryForAI,
+        model,
       });
 
       const activeChat = chats.find(c => c.id === activeChatId);

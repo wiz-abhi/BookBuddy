@@ -11,6 +11,7 @@ import type { ChatMessage } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { aiBookCompanion } from '@/ai/flows/ai-book-companion';
 import { TypingIndicator } from './typing-indicator';
+import { useSettings } from '@/context/settings-context';
 
 interface ChatInterfaceProps {
   bookId: string;
@@ -24,6 +25,7 @@ export function ChatInterface({ bookId, bookTitle }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const { model } = useSettings();
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -44,12 +46,13 @@ export function ChatInterface({ bookId, bookTitle }: ChatInterfaceProps) {
     setIsLoading(true);
 
     try {
-      const chatHistory = messages.map(msg => ({ role: msg.role, content: msg.content }));
+      const chatHistory = messages.map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content }));
       
       const result = await aiBookCompanion({
         bookId,
         query: input,
         chatHistory,
+        model,
       });
 
       let formattedResponse = result.mainResponse;

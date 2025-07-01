@@ -12,6 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const IndexBookInputSchema = z.object({
+  model: z.string().optional().describe('The AI model to use for the response.'),
   bookDataUri: z
     .string()
     .describe(
@@ -49,9 +50,9 @@ const indexBookFlow = ai.defineFlow(
     inputSchema: IndexBookInputSchema,
     outputSchema: IndexBookOutputSchema,
   },
-  async input => {
+  async (input) => {
     try {
-      const {output} = await prompt(input);
+      const {output} = await prompt(input, { model: input.model });
       // Implement RAG indexing logic here, for now just returning prompt output
       // This might involve calling external services, chunking the book data, etc.
       return output!;

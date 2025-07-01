@@ -12,6 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const MainChatInputSchema = z.object({
+  model: z.string().optional().describe('The AI model to use for the response.'),
   query: z.string().describe('The user query about their books.'),
   library: z.array(z.object({
       title: z.string(),
@@ -83,8 +84,8 @@ const mainChatFlow = ai.defineFlow(
     inputSchema: MainChatInputSchema,
     outputSchema: MainChatOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
+  async (input) => {
+    const {output} = await prompt(input, { model: input.model });
     return output!;
   }
 );

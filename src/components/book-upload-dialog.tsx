@@ -23,6 +23,7 @@ import { auth, db, storage } from '@/lib/firebase';
 import { addDoc, collection } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import Image from 'next/image';
+import { useSettings } from '@/context/settings-context';
 
 const formSchema = z.object({
   title: z.string().min(1, { message: 'Title is required.' }),
@@ -42,6 +43,7 @@ export function BookUploadDialog() {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const { model } = useSettings();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -101,7 +103,7 @@ export function BookUploadDialog() {
     }
     setIsLoading(true);
     try {
-      const result = await indexBook({ bookDataUri: values.bookDataUri });
+      const result = await indexBook({ bookDataUri: values.bookDataUri, model });
       if (result.success) {
         let coverImageURL = `https://placehold.co/300x450?text=${encodeURIComponent(values.title)}`;
         if (values.coverImageFile) {

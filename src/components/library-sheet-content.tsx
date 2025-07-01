@@ -13,12 +13,20 @@ import { auth, db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { useToast } from '@/hooks/use-toast';
+import { EditBookDialog } from './edit-book-dialog';
 
 export function LibrarySheetContent() {
   const [user, setUser] = useState<User | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const [bookToEdit, setBookToEdit] = useState<Book | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  const handleEditClick = (book: Book) => {
+    setBookToEdit(book);
+    setIsEditDialogOpen(true);
+  };
 
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
@@ -52,31 +60,34 @@ export function LibrarySheetContent() {
   }, [user, toast]);
 
   return (
-    <div className="flex h-full flex-col">
-      <SheetHeader className="p-6 pb-4 border-b text-left">
-        <div className="flex items-center justify-between">
-          <SheetTitle className="font-headline text-2xl font-bold text-foreground">
-            My Library
-          </SheetTitle>
-          <BookUploadDialog />
-        </div>
-        <SheetDescription>
-          Browse your book collection or upload a new one to get started.
-        </SheetDescription>
-      </SheetHeader>
-      <main className="flex-1 overflow-y-auto p-6">
-        {loading ? (
-          <p>Loading your library...</p>
-        ) : books.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            {books.map((book) => (
-              <BookCard key={book.id} book={book} />
-            ))}
+    <>
+      <div className="flex h-full flex-col">
+        <SheetHeader className="p-6 pb-4 border-b text-left">
+          <div className="flex items-center justify-between">
+            <SheetTitle className="font-headline text-2xl font-bold text-foreground">
+              My Library
+            </SheetTitle>
+            <BookUploadDialog />
           </div>
-        ) : (
-          <p className="text-center text-muted-foreground">Your library is empty. Upload a book to get started!</p>
-        )}
-      </main>
-    </div>
+          <SheetDescription>
+            Browse your book collection or upload a new one to get started.
+          </SheetDescription>
+        </SheetHeader>
+        <main className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <p>Loading your library...</p>
+          ) : books.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+              {books.map((book) => (
+                <BookCard key={book.id} book={book} onEdit={() => handleEditClick(book)} />
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-muted-foreground">Your library is empty. Upload a book to get started!</p>
+          )}
+        </main>
+      </div>
+      <EditBookDialog book={bookToEdit} open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
+    </>
   );
 }
